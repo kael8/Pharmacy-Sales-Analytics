@@ -28,6 +28,11 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    public function hasRole($role)
+    {
+        return $this->role === $role;
+    }
+
     public function sales()
     {
         return $this->hasMany(Sale::class);

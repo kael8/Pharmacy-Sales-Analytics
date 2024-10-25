@@ -1,6 +1,9 @@
 <aside class="sidebar sidebar-default navs-rounded-all">
     <div class="sidebar-header d-flex align-items-center justify-content-start">
-        <a href="{{route('dashboard')}}" class="navbar-brand">
+        @php
+            $dashboardRoute = auth()->user()->role === 'Staff' ? 'staff.dashboard' : (auth()->user()->role === 'Manager' ? 'manager.dashboard' : 'dashboard');
+        @endphp
+        <a href="{{route($dashboardRoute)}}" class="navbar-brand">
 
             <h6 class="logo-title">{{env('APP_NAME')}}</h6>
         </a>

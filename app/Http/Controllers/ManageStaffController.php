@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Image;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class ManageStaffController extends Controller
 {
@@ -31,33 +33,50 @@ class ManageStaffController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|string|email|max:255|unique:users,email', // Ensure email is unique in the users table
             'password' => 'required|string|min:8|confirmed', // Confirms with a field named `password_confirmation`
-            'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Optional image upload validation
+            'profile_image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048', // Optional image upload validation
         ]);
 
-        $profileImagePath = null;
-        if ($request->hasFile('profile_image')) {
-            $profileImagePath = $request->file('profile_image')->store('profile_images', 'public');
+        DB::beginTransaction();
+
+        try {
+            $profileImagePath = null;
+            if ($request->hasFile('profile_image')) {
+                // Upload image to Cloudinary
+                $uploadedFileUrl = Cloudinary::upload($request->file('profile_image')->getRealPath(), [
+                    'folder' => 'staff'
+                ])->getSecurePath();
+                $profileImagePath = $uploadedFileUrl;
+            }
+
+            $user = User::create([
+                'fname' => $request->fname,
+                'lname' => $request->lname,
+                'phone' => $request->phone,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'profile_image' => $profileImagePath,
+                'role' => 'Staff'
+            ]);
+
+            Image::create([
+                'name' => $profileImagePath,
+                'user_id' => $user->id,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Staff account created successfully',
+                'user' => $user,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to create staff account',
+                'error' => $e->getMessage(),
+            ], 500);
         }
-
-        $user = User::create([
-            'fname' => $request->fname,
-            'lname' => $request->lname,
-            'phone' => $request->phone,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'profile_image' => $profileImagePath,
-            'role' => 'Staff'
-        ]);
-
-        Image::create([
-            'name' => $profileImagePath,
-            'user_id' => $user->id,
-        ]);
-
-        return response()->json([
-            'message' => 'Staff account created successfully',
-            'user' => $user,
-        ], 201);
     }
 
     public function viewStaff(Request $request)
@@ -84,19 +103,22 @@ class ManageStaffController extends Controller
 
         // Handle profile image upload if a new one is provided
         if ($request->hasFile('profile_image')) {
-            // Store the uploaded image in the 'profile_images' directory within the 'public' disk
-            $profileImagePath = $request->file('profile_image')->store('profile_images', 'public');
+            // Upload image to Cloudinary
+            $uploadedFileUrl = Cloudinary::upload($request->file('profile_image')->getRealPath(), [
+                'folder' => 'staff'
+            ])->getSecurePath();
 
             // Check if the user already has an associated image
             if ($image) {
-                // Delete the old image file from storage
-                Storage::disk('public')->delete($image->name);
+                // Extract the public ID from the URL to delete the old image
+                $publicId = pathinfo(parse_url($image->name, PHP_URL_PATH), PATHINFO_FILENAME);
+                Cloudinary::destroy('staff/' . $publicId);
 
-                // Update the existing image record with the new path
-                $image->update(['name' => $profileImagePath]);
+                // Update the existing image record with the new URL
+                $image->update(['name' => $uploadedFileUrl]);
             } else {
                 // Create a new image record
-                $user->image()->create(['name' => $profileImagePath]);
+                $user->image()->create(['name' => $uploadedFileUrl]);
             }
         }
 
@@ -120,7 +142,6 @@ class ManageStaffController extends Controller
             'user' => $user,
         ]);
     }
-
     public function recordSale(Request $request)
     {
         return view('manage-staff.recordSale');

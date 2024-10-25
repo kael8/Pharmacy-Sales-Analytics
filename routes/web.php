@@ -33,37 +33,94 @@ Route::get('/storage', function () {
 
 //UI Pages Routs
 Route::get('/', [HomeController::class, 'uisheet'])->name('uisheet');
+Route::resource('users', UserController::class);
 
-Route::group(['middleware' => 'auth'], function () {
+// Common routes (if applicable)
+Route::group(['middleware' => ['auth']], function () {
+    // Sale routes (shared between Manager and Staff)
+    Route::post('/createSale', [SaleController::class, 'createSale'])->name('createSale');
+    Route::post('/createProduct', [InventoryController::class, 'createProduct'])->name('createProduct');
+    Route::post('/updateProduct/{id}', [InventoryController::class, 'updateProduct'])->name('updateProduct');
+    Route::get('/sale/recordSale', [SaleController::class, 'recordSale'])->name('recordSale');
+    Route::get('/get-batches', [SaleController::class, 'getBatches'])->name('getBatches');
+    Route::get('/sale/viewSales', [SaleController::class, 'viewSales'])->name('viewSales');
+
+    // Inventory Routes
+    Route::get('/inventory/addProduct', [InventoryController::class, 'addProduct'])->name('addProduct');
+    Route::get('/inventory/viewProducts', [InventoryController::class, 'viewProducts'])->name('viewProducts');
+    Route::get('/inventory/trackInventory', [InventoryController::class, 'trackInventory'])->name('trackInventory');
+    //Route::get('/inventory/editProduct/{id?}', [InventoryController::class, 'restock'])->name('editProduct');
+    Route::get('/report/generate', [ReportController::class, 'generateReport'])->name('generateReport');
+    Route::post('/report', [SaleController::class, 'report'])->name('report');
+    Route::get('/products', [InventoryController::class, 'products'])->name('products');
+    Route::get('/track', [InventoryController::class, 'track'])->name('track');
+    Route::get('/inventory/viewInventoryBatches', [InventoryController::class, 'viewInventoryBatches'])->name('viewInventoryBatches');
+    Route::get('/batches', [InventoryController::class, 'batches'])->name('batches');
+    Route::get('/inventory/editBatch/{id?}', [InventoryController::class, 'editBatch'])->name('editBatch');
+    Route::get('/inventory/addBatch', [InventoryController::class, 'addBatch'])->name('addBatch');
+    Route::post('/createBatch', [InventoryController::class, 'createBatch'])->name('createBatch');
+    Route::post('/updateBatch', [InventoryController::class, 'updateBatch'])->name('updateBatch');
+    Route::get('/inventory/editProduct/{id?}', [InventoryController::class, 'editProduct'])->name('editProduct');
+    Route::post('/inventory/updateProduct', [InventoryController::class, 'updateProduct'])->name('updateProduct');
+});
+
+// Manager routes
+Route::group(['middleware' => ['auth', 'role:Manager']], function () {
     // Permission Module
     Route::get('/role-permission', [RolePermission::class, 'index'])->name('role.permission.list');
     Route::resource('permission', PermissionController::class);
     Route::resource('role', RoleController::class);
 
     // Dashboard Routes
-    Route::get('/dashboard', [HomeController::class, 'index'])->name('dashboard');
-    Route::get('/staff/addStaff', [ManageStaffController::class, 'addStaff'])->name('addStaff');
-    Route::post('/createStaff', [ManageStaffController::class, 'createStaff'])->name('createStaff');
-    Route::get('/staff/viewStaff', [ManageStaffController::class, 'viewStaff'])->name('viewStaff');
-    Route::get('/staff/editStaff/{id?}', [ManageStaffController::class, 'addStaff'])->name('editStaff');
-    Route::post('/updateStaff/{id}', [ManageStaffController::class, 'updateStaff'])->name('updateStaff');
-    Route::get('/sale/recordSale', [SaleController::class, 'recordSale'])->name('recordSale');
-    Route::post('/createSale', [SaleController::class, 'createSale'])->name('createSale');
-    Route::get('/sale/viewSales', [SaleController::class, 'viewSales'])->name('viewSales');
-    Route::post('/report', [SaleController::class, 'report'])->name('report');
-    Route::get('/sale/sales/view', [SaleController::class, 'viewSalesInsight'])->name('viewSalesInsight');
-    Route::get('/sales/insights', [SaleController::class, 'generateSalesInsights'])->name('sales.insights');
-    Route::get('/inventory/restock', [InventoryController::class, 'restock'])->name('restock');
-    Route::post('/createProduct', [InventoryController::class, 'createProduct'])->name('createProduct');
-    Route::get('/inventory/viewProducts', [InventoryController::class, 'viewProducts'])->name('viewProducts');
-    Route::get('/inventory/editProduct/{id?}', [InventoryController::class, 'restock'])->name('editProduct');
-    Route::post('/updateProduct/{id}', [InventoryController::class, 'updateProduct'])->name('updateProduct');
-    Route::get('/inventory/trackInventory', [InventoryController::class, 'trackInventory'])->name('trackInventory');
-    Route::get('/report/generate', [ReportController::class, 'generateReport'])->name('generateReport');
+    Route::get('/admin/dashboard', [HomeController::class, 'index'])->name('manager.dashboard');
 
-    // Users Module
-    Route::resource('users', UserController::class);
+    // Staff Management
+    Route::get('/admin/staff/addStaff', [ManageStaffController::class, 'addStaff'])->name('addStaff');
+    Route::post('/createStaff', [ManageStaffController::class, 'createStaff'])->name('createStaff');
+    Route::get('/admin/staff/viewStaff', [ManageStaffController::class, 'viewStaff'])->name('viewStaff');
+    Route::get('/admin/staff/editStaff/{id?}', [ManageStaffController::class, 'addStaff'])->name('editStaff');
+    Route::post('/updateStaff/{id}', [ManageStaffController::class, 'updateStaff'])->name('updateStaff');
+
+    // Sale and Report Management
+
+
+
+
+    // Sales Insights
+    Route::get('/sale/count/{period?}', [SaleController::class, 'saleCount'])->name('sales.count');
+    Route::get('/sale/revenue/{period?}', [SaleController::class, 'revenue'])->name('sales.revenue');
+    Route::get('/sale/profit/{period?}', [SaleController::class, 'profit'])->name('sales.profit');
+    Route::get('/sale/cost/{period?}', [SaleController::class, 'cost'])->name('sales.cost');
+    Route::get('/sale/net-profit/{period?}', [SaleController::class, 'netProfit'])->name('inventory.net.profit');
+    Route::get('/sale/gross/{period?}', [SaleController::class, 'gross'])->name('sales.gross');
+    Route::get('/sale/top/{period?}', [SaleController::class, 'topProducts'])->name('sales.top');
+    Route::get('/sale/trends/{period?}', [SaleController::class, 'trends'])->name('sales.trends');
+    Route::get('/sale/predict/{period?}', [SaleController::class, 'predict'])->name('sales.predict');
+    // Inventory Editing
+
 });
+
+// Staff routes
+Route::group(['middleware' => ['auth', 'role:Staff']], function () {
+    Route::get('/staff/dashboard', [HomeController::class, 'staffIndex'])->name('staff.dashboard');
+
+    // Sale Routes
+
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //App Details Page => 'Dashboard'], function() {
 Route::group(['prefix' => 'menu-style'], function () {

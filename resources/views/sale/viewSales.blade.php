@@ -1,63 +1,40 @@
 <x-app-layout :assets="$assets ?? []">
     <div class="container mt-4">
-        <!-- Header -->
-        <div class="header mb-4">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h1 class="card-title text-center">Sales Report</h1>
-                    <form id="filterForm" class="form-inline">
-                        <div class="row w-100">
-                            <div class="col-md-4 col-sm-12 mb-3">
-                                <div class="form-group w-100">
-                                    <label for="start-date" class="mr-2">Start Date:</label>
-                                    <input type="date" id="start-date" name="start_date" class="form-control w-100"
-                                        value="{{ request('start_date') }}">
-                                </div>
-                            </div>
-                            <div class="col-md-4 col-sm-12 mb-3">
-                                <div class="form-group w-100">
-                                    <label for="end-date" class="mr-2">End Date:</label>
-                                    <input type="date" id="end-date" name="end_date" class="form-control w-100"
-                                        value="{{ request('end_date') }}">
-                                </div>
-                            </div>
-                            <div class="col-md-4 col-sm-12 mb-3">
-                                <div class="form-group w-100">
-                                    <label class="d-block">&nbsp;</label> <!-- Empty label for alignment -->
-                                    <button type="submit" class="btn btn-primary w-100">Filter</button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
+        <!-- Sales Report Card -->
+        <div class="card shadow-sm">
+            <!-- Header -->
+            <div class="card-header">
+                <h1 class="card-title text-center">Sales Report</h1>
             </div>
-        </div>
 
-        <!-- Summary Statistics -->
-        <div class="summary mb-4">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <div class="row text-center">
+            <div class="card-body">
+                <!-- Month Selection Form -->
+                <form id="filterForm" class="form-inline mb-4">
+                    <div class="row w-100">
                         <div class="col-md-4 col-sm-12 mb-3">
-                            <h5 id="totalSales" class="card-text">Total Sales: ₱{{ number_format($totalSales, 2) }}</h5>
-                        </div>
-                        <div class="col-md-4 col-sm-12 mb-3">
-                            <h5 id="totalOrders" class="card-text">Total Orders: {{ $totalOrders }}</h5>
-                        </div>
-                        <div class="col-md-4 col-sm-12 mb-3">
-                            <h5 id="totalQuantity" class="card-text">Total Quantity Sold: {{ $totalQuantity }}</h5>
+                            <div class="form-group w-100">
+                                <label for="month" class="mr-2">Select Month:</label>
+                                <input type="month" id="month" name="month" class="form-control w-100"
+                                    value="{{ request('month', date('Y-m')) }}">
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
+                </form>
 
-        <!-- Detailed Sales Data -->
-        <div class="card shadow-sm mb-4">
-            <div class="card-header">
-                <h4 class="card-title">Sales Details</h4>
-            </div>
-            <div class="card-body">
+                <!-- Summary Statistics -->
+                <div class="row text-center mb-4">
+                    <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalSales" class="card-text">Total Sales: ₱0.00</h5>
+                    </div>
+                    <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalOrders" class="card-text">Total Orders: 0</h5>
+                    </div>
+                    <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalQuantity" class="card-text">Total Quantity Sold: 0</h5>
+                    </div>
+                </div>
+
+                <!-- Detailed Sales Data Table -->
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover">
                         <thead class="thead-light">
@@ -71,213 +48,160 @@
                             </tr>
                         </thead>
                         <tbody id="salesTableBody">
-                            @foreach($sales as $sale)
-                                <tr>
-                                    <td>{{ $sale->id }}</td>
-                                    <td>{{ $sale->formatted_sale_date = date('Y-m-d', strtotime($sale->sale_date)) }}</td>
-                                    <td>{{ $sale->product->product_name }}</td>
-                                    <td>{{ $sale->quantity_sold }}</td>
-                                    <td>₱{{ number_format($sale->product->price, 2) }}</td>
-                                    <td>₱{{ number_format($sale->total_amount, 2) }}</td>
-                                </tr>
-                            @endforeach
+                            <!-- Table rows will be filled dynamically -->
                         </tbody>
                     </table>
                 </div>
-            </div>
-        </div>
 
-        <!-- Charts and Graphs -->
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <div class="charts">
-                    <button id="downloadChart" class="btn btn-success btn-lg mb-3">
-                        <i class="fas fa-download"></i> Download Chart
-                    </button>
-                    <div style="overflow-x: auto;">
-                        <canvas id="salesChart"></canvas>
-                    </div>
+                <!-- Pagination Container -->
+                <div class="d-flex justify-content-center mt-4">
+                    <ul class="pagination" id="paginationContainer">
+                        <!-- Pagination links will be inserted here -->
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <!-- Include jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-</x-app-layout>
-<script>
+    <!-- Include Flatpickr and Flatpickr Month Select Plugin -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@latest/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@latest/dist/plugins/monthSelect/index.js"></script>
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const ctx = document.getElementById('salesChart').getContext('2d');
-        let salesChart;
 
-        const getRandomColor = () => {
-            const letters = '0123456789ABCDEF';
-            let color = '#';
-            for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
-            }
-            return color;
-        };
+    <!-- Custom CSS for Month Grid Layout and Pagination -->
+    <style>
+        /* Month Grid Layout */
+        .flatpickr-monthSelect-months {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 10px;
+            padding: 10px;
+        }
 
-        const aggregateSalesByMonth = (salesData) => {
-            return salesData.reduce((acc, sale) => {
-                const date = new Date(sale.sale_date);
-                const yearMonth = `${date.getFullYear()}-${date.getMonth() + 1}`; // Format YYYY-MM
+        .flatpickr-monthSelect-month {
+            text-align: center;
+            padding: 10px 0;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
 
-                if (!acc[yearMonth]) {
-                    acc[yearMonth] = {};
-                }
+        .flatpickr-monthSelect-month:hover,
+        .flatpickr-monthSelect-month.selected {
+            background-color: #007bff;
+            color: #fff;
+        }
 
-                if (!acc[yearMonth][sale.product.product_name]) {
-                    acc[yearMonth][sale.product.product_name] = 0;
-                }
+        .flatpickr-monthSelect-theme-light .flatpickr-monthSelect-month {
+            background-color: #f9f9f9;
+        }
+    </style>
 
-                acc[yearMonth][sale.product.product_name] += parseFloat(sale.total_amount);
-                return acc;
-            }, {});
-        };
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const monthInput = document.getElementById('month');
 
-        const updateChart = (salesData) => {
-            // Aggregate sales data by month
-            const aggregatedData = aggregateSalesByMonth(salesData);
+            // Trigger initial sales load with the current month
+            sales(monthInput.value);
 
-            // Group sales data by product and month
-            const products = new Set(); // To track unique product names
-            Object.keys(aggregatedData).forEach(month => {
-                Object.keys(aggregatedData[month]).forEach(productName => {
-                    products.add(productName);
-                });
+            // Handle change event for month input
+            monthInput.addEventListener('change', (event) => {
+                event.preventDefault();
+                sales(monthInput.value);
             });
 
-            const datasets = Array.from(products).map(productName => {
-                const dataPoints = [];
+            function sales(month = null, page = 1) {
+                const data = { month: month || monthInput.value, page: page };
 
-                Object.keys(aggregatedData).forEach(month => {
-                    const monthData = aggregatedData[month];
-                    dataPoints.push({
-                        x: new Date(`${month}-01`).toISOString(), // Use ISO date format
-                        y: monthData[productName] || 0 // Default to 0 if no sales data
-                    });
-                });
+                $.ajax({
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    url: '{{ route('report') }}',
+                    type: 'POST',
+                    data: data,
+                    success: (response) => {
+                        // Update summary statistics
+                        document.getElementById('totalSales').textContent = `Total Sales: ₱${response.totalSales}`;
+                        document.getElementById('totalOrders').textContent = `Total Orders: ${response.totalOrders}`;
+                        document.getElementById('totalQuantity').textContent = `Total Quantity Sold: ${response.totalQuantity}`;
 
-                const color = getRandomColor(); // Generate a single color for both fill and border
+                        // Update sales table
+                        const salesTableBody = document.getElementById('salesTableBody');
+                        salesTableBody.innerHTML = response.sales.data.map(sale => {
+                            const saleDate = new Date(sale.sale_date);
+                            const localDate = saleDate.toLocaleString('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
 
-                return {
-                    label: productName,
-                    data: dataPoints,
-                    backgroundColor: color, // Solid background color
-                    borderColor: color, // Same color for border
-                    borderWidth: 3, // Thicker lines
-                    tension: 0.1, // Curved lines
-                    fill: true // Ensure bars are filled
-                };
-            });
+                            return `
+        <tr>
+            <td>${sale.id}</td>
+            <td>${localDate.split(',')[0]}</td>
+            <td>${sale.product.product_name}</td>
+            <td>${sale.quantity_sold}</td>
+            <td>₱${parseFloat(sale.inventory.price).toFixed(2)}</td> <!-- Adjusted to get price from inventory -->
+            <td>₱${parseFloat(sale.inventory.price * sale.quantity_sold).toFixed(2)}</td> <!-- Calculate total price -->
+        </tr>
+    `;
+                        }).join('');
 
-            // Plugin to add background color to the chart area
-            const backgroundColorPlugin = {
-                id: 'customCanvasBackgroundColor',
-                beforeDraw: (chart) => {
-                    const ctx = chart.canvas.getContext('2d');
-                    ctx.save();
-                    ctx.globalCompositeOperation = 'destination-over';
-                    ctx.fillStyle = 'white'; // Set your desired background color here
-                    ctx.fillRect(0, 0, chart.width, chart.height);
-                    ctx.restore();
-                }
-            };
 
-            // Create or update the chart
-            if (salesChart) {
-                salesChart.data.datasets = datasets;
-                salesChart.update();
-            } else {
-                salesChart = new Chart(ctx, {
-                    type: 'bar', // Bar chart
-                    data: { datasets },
-                    options: {
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: { unit: 'month' },
-                                title: { display: true, text: 'Month' }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: 'Total Amount (₱)' }
-                            }
-                        },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: (context) => {
-                                        const label = context.dataset.label || '';
-                                        return `${label ? `${label}: ` : ''}₱${context.raw.y.toFixed(2)}`; // Show total_amount in tooltips
-                                    }
-                                }
+                        // Update pagination links
+                        const paginationContainer = document.getElementById('paginationContainer');
+                        paginationContainer.innerHTML = '';
+
+                        // Previous Page Link
+                        if (response.current_page > 1) {
+                            paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${response.current_page - 1}">&laquo;</a></li>`;
+                        } else {
+                            paginationContainer.innerHTML += `<li class="page-item disabled"><span class="page-link">&laquo;</span></li>`;
+                        }
+
+                        // Page Number Links
+                        for (let page = 1; page <= response.last_page; page++) {
+                            if (page === response.current_page) {
+                                paginationContainer.innerHTML += `<li class="page-item active"><span class="page-link">${page}</span></li>`;
+                            } else {
+                                paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${page}">${page}</a></li>`;
                             }
                         }
+
+                        // Next Page Link
+                        if (response.current_page < response.last_page) {
+                            paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${response.current_page + 1}">&raquo;</a></li>`;
+                        } else {
+                            paginationContainer.innerHTML += `<li class="page-item disabled"><span class="page-link">&raquo;</span></li>`;
+                        }
+
+                        // Attach click events to pagination links
+                        paginationContainer.querySelectorAll('a').forEach(link => {
+                            link.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                const page = this.getAttribute('data-page');
+                                sales(month, page);
+                            });
+                        });
                     },
-                    plugins: [backgroundColorPlugin]
+                    error: (xhr) => {
+                        console.error('Error:', xhr.responseText);
+                        const response = JSON.parse(xhr.responseText);
+                        const errorMessage = response.message + "\n" + (response.errors ? response.errors.join("\n") : "");
+                        alert(errorMessage);
+                    }
                 });
             }
-        };
 
-        // Initial chart rendering
-        const initialSalesData = @json($sales);
-        updateChart(initialSalesData);
-
-        // Function to download the chart as an image
-        document.getElementById('downloadChart').addEventListener('click', () => {
-            const link = document.createElement('a');
-            link.href = salesChart.toBase64Image();
-            link.download = 'sales_chart.png';
-            link.click();
+            function initializeFlatpickr(inputElement) {
+                flatpickr(inputElement, {
+                    dateFormat: "Y-m",
+                    plugins: [new monthSelectPlugin({
+                        shorthand: true,
+                        dateFormat: "Y-m",
+                        altFormat: "F Y",
+                        theme: "light"
+                    })]
+                });
+            }
         });
-
-        // AJAX form submission
-        document.getElementById('filterForm').addEventListener('submit', (event) => {
-            event.preventDefault();
-            const startDate = document.getElementById('start-date').value;
-            const endDate = document.getElementById('end-date').value;
-
-            $.ajax({
-                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                url: '{{ route('report') }}',
-                type: 'POST',
-                data: { start_date: startDate, end_date: endDate },
-                success: (response) => {
-                    // Update summary statistics
-                    document.getElementById('totalSales').textContent = `Total Sales: ₱${response.totalSales.toFixed(2)}`;
-                    document.getElementById('totalOrders').textContent = `Total Orders: ${response.totalOrders}`;
-                    document.getElementById('totalQuantity').textContent = `Total Quantity Sold: ${response.totalQuantity}`;
-
-                    // Update sales table
-                    const salesTableBody = document.getElementById('salesTableBody');
-                    salesTableBody.innerHTML = response.sales.map(sale => `
-                        <tr>
-                            <td>${sale.id}</td>
-                            <td>${new Date(sale.sale_date).toISOString().split('T')[0]}</td>
-                            <td>${sale.product.product_name}</td>
-                            <td>${sale.quantity_sold}</td>
-                            <td>₱${parseFloat(sale.product.price).toFixed(2)}</td>
-                            <td>₱${parseFloat(sale.total_amount).toFixed(2)}</td>
-                        </tr>
-                    `).join('');
-
-                    // Update chart
-                    console.log(response.sales);
-                    updateChart(response.sales);
-                },
-                error: (xhr) => {
-                    console.error('Error:', xhr.responseText);
-                    const response = JSON.parse(xhr.responseText);
-                    const errorMessage = response.message + "\n" + response.errors.join("\n");
-                    alert(errorMessage);
-                }
-            });
-        });
-    });
-
-</script>
+    </script>
+</x-app-layout>

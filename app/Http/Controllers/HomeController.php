@@ -15,6 +15,12 @@ class HomeController extends Controller
         $user = auth()->user();
         return view('dashboards.dashboard', compact('assets'));
     }
+    public function staffIndex(Request $request)
+    {
+        $assets = ['chart', 'animation'];
+        $user = auth()->user();
+        return view('dashboards.staff-dashboard', compact('assets'));
+    }
 
     /*
      * Menu Style Routs

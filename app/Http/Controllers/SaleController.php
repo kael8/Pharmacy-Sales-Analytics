@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use DateTime;
 use App\Models\Analytic;
+use InvalidArgumentException;
 
 class SaleController extends Controller
 {
@@ -19,131 +20,205 @@ class SaleController extends Controller
         return view('sale.recordSale', compact('items'));
     }
 
+    public function getBatches(Request $request)
+    {
+        $productId = $request->input('product_id');
+        $batches = Inventory::getBatchesByProduct($productId);
+
+        return response()->json([
+            'batches' => $batches
+        ]);
+    }
+
+
     public function createSale(Request $request)
     {
-        // Validate the input data
-        $validatedData = $request->validate([
-            'product_id.*' => 'required|numeric|exists:products,id', // Ensure each product_id is numeric and exists
-            'quantity_sold.*' => 'required|numeric|min:1', // Ensure each quantity_sold is numeric and at least 1
-        ]);
-
-        $products = $request->input('product_id');
-        $quantities = $request->input('quantity_sold');
+        // Initialize arrays for errors and updated products
         $errors = [];
         $updatedProducts = [];
+
+        // Retrieve input arrays, using empty arrays as defaults to avoid undefined index errors
+        $products = $request->input('product_id', []);
+        $batches = $request->input('batch_id', []);
+        $quantities = $request->input('quantity_sold', []);
+        $prices = $request->input('price', []);
+        $totals = $request->input('total', []);
 
         DB::beginTransaction();
 
         try {
             foreach ($products as $index => $productId) {
+                // Validate each sale entry manually
+                $productError = [];
+
+                // Validate product ID
+                if (empty($productId) || !is_numeric($productId) || !Product::find($productId)) {
+                    $productError[] = "The selected product is invalid.";
+                }
+
+                // Validate batch ID
+                if (empty($batches[$index]) || !Inventory::where('batch_id', $batches[$index])->exists()) {
+                    $productError[] = "The selected batch is invalid.";
+                }
+
+                // Validate quantity sold
+                if (empty($quantities[$index]) || !is_numeric($quantities[$index]) || $quantities[$index] < 1) {
+                    $productError[] = "The quantity sold must be at least 1.";
+                }
+
+                // Validate price
+                if (empty($prices[$index]) || !is_numeric($prices[$index]) || $prices[$index] < 0) {
+                    $productError[] = "The price must be a valid number.";
+                }
+
+                // Validate total
+                if (empty($totals[$index]) || !is_numeric($totals[$index]) || $totals[$index] < 0) {
+                    $productError[] = "The total amount must be a valid number.";
+                }
+
+                // If any validation error exists for this sale, add it to the errors array
+                if (!empty($productError)) {
+                    $errors[] = $productError; // Add the error messages without referencing index
+                    continue; // Skip this sale entry if there's an error
+                }
+
+                // Process the sale if no errors exist for this index
                 $quantitySold = $quantities[$index];
-                $product = Product::find($productId);
+                $batchId = $batches[$index];
+                $price = $prices[$index];
+                $total = $totals[$index];
 
-                if (!$product) {
-                    $errors[] = "Product with ID $productId not found.";
-                    throw new \Exception("Product with ID $productId not found.");
+                // Fetch product and inventory (latest created_at record)
+                $product = Product::findOrFail($productId);
+                $inventory = Inventory::where('product_id', $productId)
+                    ->where('batch_id', $batchId)
+                    ->latest('created_at') // Fetch the latest record based on created_at
+                    ->firstOrFail();
+
+                // Check for sufficient stock
+                if ($inventory->quantity < $quantitySold) {
+                    $errors[] = ["Insufficient stock in the selected batch for product {$product->product_name}. Please reduce the quantity sold."];
+                    continue; // Log error and continue to next sale
                 }
 
-                if ($product->quantity_in_stock < $quantitySold) {
-                    $errors[] = "Insufficient stock for product ID $productId.";
-                    throw new \Exception("Insufficient stock for product ID $productId.");
-                }
+                // Calculate revenue, cost, and profit
+                $revenue = $quantitySold * $inventory->price;  // Use inventory price for revenue calculation
+                $cost = $quantitySold * $inventory->cost_price;  // Use product's cost price
+                $profit = $revenue - $cost;
 
-                // Update stock
-                $product->quantity_in_stock -= $quantitySold;
-                $product->save();
-                $updatedProducts[] = $product;
-
-                // Insert into inventory
+                // Create new inventory record reflecting the current state after sale (track history)
                 Inventory::create([
                     'product_id' => $productId,
-                    'quantity' => $product->quantity_in_stock,
-                    'price' => $product->price,
-                    'stock_date' => now(),
+                    'batch_id' => $batchId,
+                    'expiration_date' => $inventory->expiration_date, // Maintain the same expiration date
+                    'quantity' => $inventory->quantity - $quantitySold, // Adjust the quantity
+                    'action_type' => 'reduced', // Indicates the stock was reduced
+                    'price' => $inventory->price, // Maintain the same price
+                    'cost_price' => $inventory->cost_price, // Maintain the same cost price
+                    'stock_date' => $inventory->stock_date, // Maintain the original stock date
                 ]);
 
-                // Insert into sales
+                // Insert sale into the database
                 Sale::create([
                     'product_id' => $productId,
-                    'user_id' => auth()->id(),
+                    'batch_id' => $batchId,
                     'quantity_sold' => $quantitySold,
-                    'total_amount' => $quantitySold * $product->price,
+                    'total_amount' => $revenue,
+                    'cost' => $cost,
+                    'profit' => $profit,
                     'sale_date' => now(),
                 ]);
+
+                // Track updated product for response
+                $updatedProducts[] = $product;
             }
 
+            // If there were any errors, roll back the transaction and return the errors
+            if (!empty($errors)) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'Some sales were not processed due to errors.',
+                    'errors' => \Illuminate\Support\Arr::flatten($errors), // Flatten the error array for better readability
+                ], 409);
+            }
+
+            // Commit the transaction if no errors
             DB::commit();
+
+            return response()->json([
+                'message' => 'Sale recorded successfully',
+                'products' => $updatedProducts,
+            ], 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
+            // Log the exception for debugging purposes
+            \Log::error('Sale creation error: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'exception' => $e // Include exception for detailed info
+            ]);
             return response()->json([
-                'message' => 'Errors occurred during processing',
-                'errors' => $errors,
-            ], 409);
+                'message' => 'An error occurred during processing. Please try again later.',
+                'error' => $e->getMessage(), // Return the actual error message
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Sale recorded successfully',
-            'products' => $updatedProducts,
-        ], 201);
     }
+
 
     public function viewSales(Request $request)
     {
-        // Validate date range
-        $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-        ]);
 
-        // Default date range: last 30 days
-        $startDate = $request->input('start_date', (new DateTime('-30 days'))->format('Y-m-d'));
-        $endDate = $request->input('end_date', (new DateTime())->format('Y-m-d'));
-
-        // Query sales data
-        $sales = Sale::whereBetween('created_at', [$startDate, $endDate])
-            ->with('product') // Assuming a Sale has a Product relationship
-            ->get();
-
-        // Calculate summary statistics
-        $totalSales = $sales->sum('total_amount');
-        $totalOrders = $sales->count();
-        $totalQuantity = $sales->sum('quantity_sold');
-
-        return view('sale.viewSales', compact('sales', 'totalSales', 'totalOrders', 'totalQuantity', 'startDate', 'endDate'));
+        return view('sale.viewSales');
     }
 
     public function report(Request $request)
     {
-        // Validate date range
+        // Validate the month input (year-month format)
         $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'month' => 'required|date_format:Y-m',
         ]);
 
-        // Default date range: last 30 days
-        $startDate = $request->input('start_date', (new DateTime('-30 days'))->format('Y-m-d'));
-        $endDate = $request->input('end_date', (new DateTime())->format('Y-m-d'));
+        // Parse the month input to get the first day of the month
+        $month = $request->input('month');
+        $startDate = (new DateTime($month . '-01'))->format('Y-m-d');
 
-        // Query sales data
+        // Set the endDate to the last day of the month at 23:59:59
+        $endDate = (new DateTime($month . '-01'))
+            ->modify('last day of this month')
+            ->setTime(23, 59, 59) // Include the whole last day, up to 23:59:59
+            ->format('Y-m-d H:i:s');
+
+        // Query sales data based on the provided month, include related product and inventory details
         $sales = Sale::whereBetween('sale_date', [$startDate, $endDate])
-            ->with('product') // Assuming a Sale has a Product relationship
-            ->get();
+            ->with(['product', 'inventory']) // Ensure Sale has relationships defined for Product and Inventory
+            ->orderBy('sale_date', 'desc') // Sort by sale_date in ascending order
+            ->paginate(15); // Pagination with 15 items per page
 
-        // Calculate summary statistics
-        $totalSales = $sales->sum('total_amount');
-        $totalOrders = $sales->count();
-        $totalQuantity = $sales->sum('quantity_sold');
+        // Calculate summary statistics for total sales, orders, and quantities
+        $totalSales = $sales->sum(function ($sale) {
+            return $sale->inventory ? $sale->inventory->price * $sale->quantity_sold : 0; // Use inventory price
+        });
+        $totalOrders = $sales->count(); // Number of orders
+        $totalQuantity = $sales->sum('quantity_sold'); // Total quantity of products sold
 
-        if ($request->ajax()) {
-            return response()->json([
-                'sales' => $sales,
-                'totalSales' => $totalSales,
-                'totalOrders' => $totalOrders,
-                'totalQuantity' => $totalQuantity,
-            ]);
-        }
-
+        // Return the results as JSON with the pagination data
+        return response()->json([
+            'sales' => $sales,
+            'totalSales' => number_format($totalSales, 2), // Format total sales to 2 decimal places
+            'totalOrders' => $totalOrders,
+            'totalQuantity' => $totalQuantity,
+            'current_page' => $sales->currentPage(), // Current pagination page
+            'last_page' => $sales->lastPage(), // Last pagination page
+            'links' => $sales->links()->render(), // Optional: HTML pagination links
+        ]);
     }
+
+
+
+
+
+
+
 
     public function viewSalesInsight()
     {
@@ -202,5 +277,659 @@ class SaleController extends Controller
             'results' => $insights->toJson(),
         ]);
     }
+    public function saleCount($period = 'week')
+    {
+        // Get the current period sales count
+        $currentSalesCount = $this->getSalesCountForPeriod($period);
+
+        // Get the previous period sales count
+        $previousPeriod = $this->getPreviousPeriod($period);
+        $previousSalesCount = $this->getSalesCountForPeriod($previousPeriod);
+
+        // Calculate the percentage change
+        $percentageChange = $this->calculatePercentageChange($previousSalesCount, $currentSalesCount);
+
+        return response()->json([
+            'current_sales_count' => $currentSalesCount,
+            'previous_sales_count' => $previousSalesCount,
+            'percentage_change' => $percentageChange,
+        ]);
+    }
+
+    private function getSalesCountForPeriod($period)
+    {
+        return $this->getSalesData($period, 'count');
+    }
+
+    private function getSalesData($period, $type)
+    {
+        $query = Sale::query();
+        [$startDate, $endDate] = $this->getDateRangeForPeriod($period);
+
+        if ($startDate && $endDate) {
+            $query->whereBetween('sale_date', [$startDate, $endDate]);
+        }
+
+        switch ($type) {
+            case 'revenue':
+                return $query->sum('total_amount');
+            case 'profit':
+                return $query->sum('profit');
+            case 'cost':
+                return $query->sum('cost');
+            case 'count':
+                return $query->count('id');
+            default:
+                return 0;
+        }
+    }
+
+    private function getDateRangeForPeriod($period)
+    {
+        switch ($period) {
+            case 'day':
+                return [
+                    date('Y-m-d 00:00:00'),
+                    date('Y-m-d 23:59:59')
+                ];
+            case 'yesterday':
+                return [
+                    date('Y-m-d 00:00:00', strtotime('yesterday')),
+                    date('Y-m-d 23:59:59', strtotime('yesterday'))
+                ];
+            case 'week':
+                return [
+                    date('Y-m-d', strtotime('monday this week')),
+                    date('Y-m-d', strtotime('sunday this week'))
+                ];
+            case 'last_week':
+                return [
+                    date('Y-m-d', strtotime('monday last week')),
+                    date('Y-m-d', strtotime('sunday last week'))
+                ];
+            case 'month':
+                return [date('Y-m-01'), date('Y-m-t')];
+            case 'last_month':
+                return [
+                    date('Y-m-01', strtotime('first day of last month')),
+                    date('Y-m-t', strtotime('last day of last month'))
+                ];
+            case 'year':
+                return [date('Y-01-01'), date('Y-12-31')];
+            case 'last_year':
+                return [
+                    date('Y-01-01', strtotime('-1 year')),
+                    date('Y-12-31', strtotime('-1 year'))
+                ];
+            default:
+                return [null, null];
+        }
+    }
+
+
+
+
+    private function getPreviousPeriod($period)
+    {
+        $map = [
+            'day' => 'previous_hour',
+            'week' => 'last_week',
+            'month' => 'last_month',
+            'year' => 'last_year',
+        ];
+
+        return $map[$period] ?? 'last_week';
+    }
+
+
+
+    private function calculatePercentageChange($previousCount, $currentCount)
+    {
+        if ($previousCount === 0) {
+            return $currentCount > 0 ? 100 : 0;
+        }
+
+        return (($currentCount - $previousCount) / $previousCount) * 100;
+    }
+
+    public function revenue($period = 'week')
+    {
+        $currentRevenue = $this->getSalesData($period, 'revenue');
+        $previousRevenue = $this->getSalesData($this->getPreviousPeriod($period), 'revenue');
+        $percentageChange = $this->calculatePercentageChange($previousRevenue, $currentRevenue);
+
+        return response()->json([
+            'current_revenue' => $currentRevenue,
+            'previous_revenue' => $previousRevenue,
+            'percentage_change' => $percentageChange,
+        ]);
+    }
+
+    public function profit($period = 'week')
+    {
+        $currentProfit = $this->getSalesData($period, 'profit');
+        $previousProfit = $this->getSalesData($this->getPreviousPeriod($period), 'profit');
+        $percentageChange = $this->calculatePercentageChange($previousProfit, $currentProfit);
+
+        return response()->json([
+            'current_profit' => $currentProfit,
+            'previous_profit' => $previousProfit,
+            'percentage_change' => $percentageChange,
+        ]);
+    }
+
+    public function cost($period = 'week')
+    {
+        $currentCost = $this->getSalesData($period, 'cost');
+        $previousCost = $this->getSalesData($this->getPreviousPeriod($period), 'cost');
+        $percentageChange = $this->calculatePercentageChange($previousCost, $currentCost);
+
+        return response()->json([
+            'current_cost' => $currentCost,
+            'previous_cost' => $previousCost,
+            'percentage_change' => $percentageChange,
+        ]);
+    }
+
+    public function gross($period = 'week')
+    {
+        $validPeriods = ['day', 'week', 'month', 'year'];
+        if (!in_array($period, $validPeriods)) {
+            $period = 'week';
+        }
+
+        // Subquery to get the latest inventory record for each batch_id
+        $latestInventoriesSubquery = DB::table('inventories as inv')
+            ->select('inv.batch_id', DB::raw('MAX(inv.created_at) as latest_created_at'))
+            ->groupBy('inv.batch_id');
+
+        $query = Sale::query()
+            ->join('products', 'sales.product_id', '=', 'products.id')
+            ->joinSub($latestInventoriesSubquery, 'latest_inv', function ($join) {
+                $join->on('sales.batch_id', '=', 'latest_inv.batch_id');
+            })
+            ->join('inventories', function ($join) {
+                $join->on('sales.batch_id', '=', 'inventories.batch_id')
+                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+            })
+            ->selectRaw('SUM(quantity_sold * price) as total_sales, SUM(cost) as total_cost');
+
+        // Adjusting the query based on the period (day, week, month, year)
+        switch ($period) {
+            case 'day':
+                $query->whereDate('sale_date', date('Y-m-d'))
+                    ->selectRaw('HOUR(sale_date) as period, COUNT(*) as total_sales_count')
+                    ->groupBy(DB::raw('HOUR(sale_date)'))
+                    ->orderBy(DB::raw('HOUR(sale_date)'), 'asc');
+                break;
+
+            case 'week':
+                $startOfWeek = date('Y-m-d', strtotime('monday this week'));
+                $endOfWeek = date('Y-m-d', strtotime('sunday this week'));
+
+                $query->whereBetween('sale_date', [$startOfWeek, $endOfWeek])
+                    ->selectRaw('DAY(sale_date) as period, COUNT(*) as total_sales_count')
+                    ->groupBy(DB::raw('DAY(sale_date)'))
+                    ->orderBy(DB::raw('DAY(sale_date)'), 'asc');
+                break;
+
+            case 'month':
+                $startOfMonth = date('Y-m-01');
+                $endOfMonth = date('Y-m-t');
+
+                $query->whereBetween('sale_date', [$startOfMonth, $endOfMonth])
+                    ->selectRaw('WEEK(sale_date, 1) as period, COUNT(*) as total_sales_count')
+                    ->groupBy(DB::raw('WEEK(sale_date, 1)'))
+                    ->orderBy(DB::raw('WEEK(sale_date, 1)'), 'asc');
+                break;
+
+            case 'year':
+                $query->whereYear('sale_date', date('Y'))
+                    ->selectRaw('MONTH(sale_date) as period, COUNT(*) as total_sales_count')
+                    ->groupBy(DB::raw('MONTH(sale_date)'))
+                    ->orderBy(DB::raw('MONTH(sale_date)'), 'asc');
+                break;
+        }
+
+        $results = $query->get();
+
+        // Map the results to a structured response
+        $data = $results->map(function ($item) use ($period) {
+            $formattedPeriod = '';
+
+            switch ($period) {
+                case 'day':
+                    $formattedPeriod = 'Hour ' . $item->period;
+                    break;
+                case 'week':
+                    $formattedPeriod = 'Day ' . $item->period;
+                    break;
+                case 'month':
+                    $formattedPeriod = 'Week ' . $item->period;
+                    break;
+                case 'year':
+                    $formattedPeriod = date('F', mktime(0, 0, 0, $item->period, 10));
+                    break;
+            }
+
+            return [
+                'period' => $formattedPeriod,
+                'total_sales_count' => $item->total_sales_count,
+                'total_sales' => $item->total_sales,
+                'total_cost' => $item->total_cost,
+            ];
+        });
+
+        return response()->json($data);
+    }
+
+
+
+
+
+
+    public function topProducts($period = 'week')
+    {
+        $validPeriods = ['day', 'week', 'month', 'year'];
+        if (!in_array($period, $validPeriods)) {
+            $period = 'week';
+        }
+
+        // Subquery to get the latest inventory record for each batch_id
+        $latestInventoriesSubquery = DB::table('inventories as inv')
+            ->select('inv.batch_id', DB::raw('MAX(inv.created_at) as latest_created_at'))
+            ->groupBy('inv.batch_id');
+
+        // Main query joining the latest inventories
+        $query = Sale::query()
+            ->join('products', 'sales.product_id', '=', 'products.id')
+            ->joinSub($latestInventoriesSubquery, 'latest_inv', function ($join) {
+                $join->on('sales.batch_id', '=', 'latest_inv.batch_id');
+            })
+            ->join('inventories', function ($join) {
+                $join->on('sales.batch_id', '=', 'inventories.batch_id')
+                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+            })
+            ->select('sales.product_id', 'products.product_name')
+            ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, SUM(sales.total_amount) as total_revenue')
+            ->groupBy('sales.product_id', 'products.product_name')
+            ->orderBy('total_revenue', 'desc');
+
+        // Adjust the query based on the selected period
+        switch ($period) {
+            case 'day':
+                $query->whereDate('sales.sale_date', date('Y-m-d'));
+                break;
+
+            case 'week':
+                $startOfWeek = date('Y-m-d', strtotime('monday this week'));
+                $endOfWeek = date('Y-m-d', strtotime('sunday this week'));
+                $query->whereBetween('sales.sale_date', [$startOfWeek, $endOfWeek]);
+                break;
+
+            case 'month':
+                $startOfMonth = date('Y-m-01');
+                $endOfMonth = date('Y-m-t');
+                $query->whereBetween('sales.sale_date', [$startOfMonth, $endOfMonth]);
+                break;
+
+            case 'year':
+                $query->whereYear('sales.sale_date', date('Y'));
+                break;
+        }
+
+        // Limit to top 3 products
+        $results = $query->take(3)->get();
+
+        // Format the response
+        $data = $results->map(function ($item) {
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product_name,
+                'total_quantity_sold' => $item->total_quantity_sold,
+                'total_revenue' => $item->total_revenue,
+            ];
+        });
+
+        return response()->json($data);
+    }
+
+
+
+
+
+    public function trends($period = 'week')
+    {
+        // Ensure the requested period is valid
+        $validPeriods = ['day', 'week', 'month', 'year'];
+        if (!in_array($period, $validPeriods)) {
+            $period = 'week';
+        }
+
+        // Subquery to get the latest inventory record for each batch_id
+        $latestInventoriesSubquery = DB::table('inventories as inv')
+            ->select('inv.batch_id', DB::raw('MAX(inv.created_at) as latest_created_at'))
+            ->groupBy('inv.batch_id');
+
+        // Start building the query
+        $query = Sale::query()
+            ->join('products', 'sales.product_id', '=', 'products.id')
+            ->joinSub($latestInventoriesSubquery, 'latest_inv', function ($join) {
+                $join->on('sales.batch_id', '=', 'latest_inv.batch_id');
+            })
+            ->join('inventories', function ($join) {
+                $join->on('sales.batch_id', '=', 'inventories.batch_id')
+                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+            })
+            ->select('sales.product_id', 'products.product_name')
+            ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, MAX(inventories.price) as inventory_price')
+            ->groupBy('sales.product_id', 'products.product_name')
+            ->orderBy('total_quantity_sold', 'desc');
+
+        // Adjust the query based on the selected period
+        switch ($period) {
+            case 'day':
+                $query->whereDate('sales.sale_date', date('Y-m-d'))
+                    ->selectRaw('HOUR(sale_date) as period')
+                    ->groupBy(DB::raw('HOUR(sale_date)'))
+                    ->orderBy(DB::raw('HOUR(sale_date)'), 'asc');
+                break;
+
+            case 'week':
+                $startOfWeek = date('Y-m-d', strtotime('monday this week'));
+                $endOfWeek = date('Y-m-d', strtotime('sunday this week'));
+                $query->whereBetween('sales.sale_date', [$startOfWeek, $endOfWeek]);
+                break;
+
+            case 'month':
+                $startOfMonth = date('Y-m-01');
+                $endOfMonth = date('Y-m-t');
+                $query->whereBetween('sales.sale_date', [$startOfMonth, $endOfMonth]);
+                break;
+
+            case 'year':
+                $query->whereYear('sales.sale_date', date('Y'));
+                break;
+        }
+
+        // Execute the query and get the top 3 results
+        $results = $query->take(3)->get();
+
+        // Map the results to include the total quantity sold and inventory price as floats
+        $prices = $results->map(function ($item) {
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product_name,
+                'total_quantity_sold' => (float) $item->total_quantity_sold,
+                'inventory_price' => (float) $item->inventory_price,
+            ];
+        });
+
+        // Return the results as JSON
+        return response()->json($prices);
+    }
+
+
+    public function netProfit($period = 'week')
+    {
+        // Ensure the requested period is valid
+        $validPeriods = ['day', 'week', 'month', 'year'];
+        if (!in_array($period, $validPeriods)) {
+            $period = 'week';
+        }
+
+        // Initialize the query to sum profits and join products table
+        $query = Sale::query()
+            ->join('products', 'sales.product_id', '=', 'products.id')
+            ->selectRaw('SUM(profit) as total_profit');
+
+        // Apply date filters and period grouping based on the selected period
+        switch ($period) {
+            case 'day':
+                $query->whereDate('sale_date', Carbon::today())
+                    ->selectRaw('HOUR(sale_date) as period')
+                    ->groupBy(DB::raw('HOUR(sale_date)'))
+                    ->orderBy(DB::raw('HOUR(sale_date)'), 'asc');
+                break;
+
+            case 'week':
+                $query->whereBetween('sale_date', [
+                    Carbon::now()->startOfWeek(),
+                    Carbon::now()->endOfWeek()
+                ])
+                    ->selectRaw('DAY(sale_date) as period')
+                    ->groupBy(DB::raw('DAY(sale_date)'))
+                    ->orderBy(DB::raw('DAY(sale_date)'), 'asc');
+                break;
+
+            case 'month':
+                $query->whereYear('sale_date', Carbon::now()->year)
+                    ->whereMonth('sale_date', Carbon::now()->month)
+                    ->selectRaw('DAY(sale_date) as period')
+                    ->groupBy(DB::raw('DAY(sale_date)'))
+                    ->orderBy(DB::raw('DAY(sale_date)'), 'asc');
+                break;
+
+            case 'year':
+                $query->whereYear('sale_date', '>=', Carbon::now()->year - 1)
+                    ->selectRaw('MONTH(sale_date) as period')
+                    ->groupBy(DB::raw('MONTH(sale_date)'))
+                    ->orderBy(DB::raw('MONTH(sale_date)'), 'asc');
+                break;
+        }
+
+        // Execute the query and get the results
+        $results = $query->get();
+
+        // Format the results for the response
+        $data = $results->map(function ($item) use ($period) {
+            switch ($period) {
+                case 'day':
+                    $formattedPeriod = 'Hour ' . $item->period;
+                    break;
+
+                case 'week':
+                    $formattedPeriod = 'Day ' . $item->period;
+                    break;
+
+                case 'month':
+                    $formattedPeriod = 'Day ' . $item->period;
+                    break;
+
+                case 'year':
+                    $formattedPeriod = date('F', mktime(0, 0, 0, $item->period, 10));
+                    break;
+            }
+
+            return [
+                'period' => $formattedPeriod,
+                'total_profit' => (float) $item->total_profit, // Ensure accurate float conversion
+            ];
+        });
+
+        // Return the formatted data as JSON
+        return response()->json($data);
+    }
+
+
+    public function predict($period = 'week')
+    {
+        // Get all products
+        $products = Product::all();
+        $predictions = [];
+
+        // Get today's date
+        $currentDate = now()->format('Y-m-d');
+        $targetDate = now()->addWeek()->format('Y-m-d'); // Use this for week, month, year
+
+        foreach ($products as $product) {
+            // Initialize salesData to null
+            $salesData = null;
+
+            // Get sales data for each product based on the period
+            switch ($period) {
+                case 'day':
+                    // Get today's sales data
+                    $todaySales = Sale::where('product_id', $product->id)
+                        ->whereDate('sale_date', $currentDate)
+                        ->sum('quantity_sold');
+
+                    // If no sales today, return a prediction message
+                    if ($todaySales == 0) {
+                        $predictions[$product->id] = [
+                            'product_name' => $product->product_name,
+                            'predicted_sales' => 0,
+                            'message' => 'No sales data available for today, prediction not possible',
+                        ];
+                        break; // Skip further processing for this product
+                    }
+
+                    // Get sales data for the last 7 days
+                    $salesData = Sale::where('product_id', $product->id)
+                        ->select(DB::raw('SUM(quantity_sold) as total_quantity_sold'), DB::raw('DATE(sale_date) as sale_period'))
+                        ->whereBetween('sale_date', [now()->subDays(7), now()])
+                        ->groupBy('sale_period')
+                        ->orderBy('sale_period')
+                        ->get();
+                    break;
+
+                case 'week':
+                    // Get the start and end date of the current week (Monday to Sunday)
+                    $startOfWeek = now()->startOfWeek(Carbon::MONDAY)->format('Y-m-d');
+                    $endOfWeek = now()->endOfWeek(Carbon::SUNDAY)->format('Y-m-d');
+
+                    // Get sales data for the current week (grouped by day)
+                    $salesData = Sale::where('product_id', $product->id)
+                        ->select(DB::raw('SUM(quantity_sold) as total_quantity_sold'), DB::raw('DATE(sale_date) as sale_period'))
+                        ->whereBetween('sale_date', [$startOfWeek, $endOfWeek])
+                        ->groupBy('sale_period')
+                        ->orderBy('sale_period')
+                        ->get();
+
+                    // Check if there's no sales data for the current week
+                    if ($salesData->isEmpty()) {
+                        // Skip prediction for this product
+                        $predictions[$product->id] = [
+                            'product_name' => $product->product_name,
+                            'predicted_sales' => 0,  // No prediction possible
+                            'message' => 'No sales data for the current week, prediction not possible',
+                        ];
+                        break; // Skip further processing for this product
+                    }
+
+                    // Process sales data for the current week and predict for the next week
+                    $periodicSales = [];
+                    foreach ($salesData as $sale) {
+                        $periodicSales[$sale->sale_period] = $sale->total_quantity_sold;
+                    }
+
+                    // Predict sales for the next week using current week's data
+                    if (!empty($periodicSales)) {
+                        $predictedSales = $this->predictFutureSales($periodicSales, $period);
+                        $predictions[$product->id] = [
+                            'product_name' => $product->product_name,
+                            'predicted_sales' => $predictedSales['next_week'],
+                            'target_date' => $startOfWeek,  // Or the start date of next week
+                        ];
+                    }
+                    break;
+
+
+
+                case 'month':
+                    // Get sales data grouped by month for the last 3 months
+                    $salesData = Sale::where('product_id', $product->id)
+                        ->select(DB::raw('SUM(quantity_sold) as total_quantity_sold'), DB::raw('MONTH(sale_date) as sale_period'))
+                        ->whereBetween('sale_date', [now()->subMonths(3), now()])
+                        ->groupBy('sale_period')
+                        ->orderBy('sale_period')
+                        ->get();
+                    break;
+
+                case 'year':
+                    // Get sales data grouped by year for the last year
+                    $salesData = Sale::where('product_id', $product->id)
+                        ->select(DB::raw('SUM(quantity_sold) as total_quantity_sold'), DB::raw('YEAR(sale_date) as sale_period'))
+                        ->whereBetween('sale_date', [now()->subYear(), now()])
+                        ->groupBy('sale_period')
+                        ->orderBy('sale_period')
+                        ->get();
+                    break;
+            }
+
+            // Prepare data for prediction
+            $periodicSales = [];
+            if (!empty($salesData)) {
+                foreach ($salesData as $sale) {
+                    $periodicSales[$sale->sale_period] = $sale->total_quantity_sold;
+                }
+
+                // Predict sales for the specified period
+                if (!empty($periodicSales)) {
+                    $predictedSales = $this->predictFutureSales($periodicSales, $period);
+
+                    // Store predictions
+                    $predictions[$product->id] = [
+                        'product_name' => $product->product_name,
+                        'predicted_sales' => $predictedSales,
+                        'target_date' => ($period === 'day') ? $currentDate : $targetDate,
+                    ];
+                }
+            } else {
+                // Handle case when salesData is empty
+                $predictions[$product->id] = [
+                    'product_name' => $product->product_name,
+                    'predicted_sales' => [],
+                    'target_date' => ($period === 'day') ? $currentDate : $targetDate,
+                ];
+            }
+        }
+
+        return response()->json($predictions);
+    }
+
+    /**
+     * Calculate future sales predictions based on historical data.
+     *
+     * @param array $periodicSales
+     * @param string $period
+     * @return array
+     */
+    private function predictFutureSales(array $periodicSales, string $period)
+    {
+        $predictedSales = [];
+
+        switch ($period) {
+            case 'day':
+                // Predict sales for tomorrow using the average of the last seven days
+                $lastSevenDays = array_slice($periodicSales, -7, null, true);
+                $averageSales = count($lastSevenDays) > 0 ? array_sum($lastSevenDays) / count($lastSevenDays) : 0;
+                $predictedSales['next_day'] = round($averageSales);
+                break;
+
+            case 'week':
+                // Predict sales for the next week using the average of the last four weeks
+                $lastFourWeeks = array_slice($periodicSales, -4, null, true);
+                $averageSales = count($lastFourWeeks) > 0 ? array_sum($lastFourWeeks) / count($lastFourWeeks) : 0;
+                $predictedSales['next_week'] = round($averageSales);
+                break;
+
+            case 'month':
+                // Predict sales for the next month using the average of the last three months
+                $lastThreeMonths = array_slice($periodicSales, -3, null, true);
+                $averageSales = count($lastThreeMonths) > 0 ? array_sum($lastThreeMonths) / count($lastThreeMonths) : 0;
+                $predictedSales['next_month'] = round($averageSales);
+                break;
+
+            case 'year':
+                // Predict sales for the next year using the average monthly sales
+                $averageSales = count($periodicSales) > 0 ? array_sum($periodicSales) / count($periodicSales) : 0;
+                $predictedSales['next_year'] = round($averageSales * 12);
+                break;
+        }
+
+        return $predictedSales;
+    }
+
 
 }

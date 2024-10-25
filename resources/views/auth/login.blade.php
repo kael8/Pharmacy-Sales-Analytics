@@ -6,10 +6,11 @@
                <div class="col-md-6">
                   <div class="card card-transparent shadow-xl d-flex justify-content-center mb-0 auth-card">
                      <div class="card-body">
-                        <a href="{{route('dashboard')}}" class="navbar-brand d-flex justify-content-center mb-3">
-                           <h4 class="logo-title text-center">{{env('APP_NAME')}}</h4>
-                           <!-- Added text-center class here -->
-                        </a>
+
+
+
+                        <h4 class="logo-title text-center">{{env('APP_NAME')}}</h4>
+
                         <h2 class="mb-2 justify-content-center text-center">Sign In</h2>
                         <p class="justify-content-center text-center">Login to stay connected.</p>
                         <x-auth-session-status class="mb-4" :status="session('status')" />

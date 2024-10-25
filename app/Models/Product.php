@@ -12,6 +12,7 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
+        'id',
         'product_name',
         'product_description',
         'price',
@@ -27,4 +28,9 @@ class Product extends Model
     {
         return $this->hasMany(Inventory::class);
     }
+    public function batches()
+    {
+        return $this->hasMany(Batch::class);
+    }
+
 }

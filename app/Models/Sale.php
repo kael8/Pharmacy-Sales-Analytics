@@ -14,8 +14,12 @@ class Sale extends Model
     protected $fillable = [
         'product_id',
         'user_id',
+        'batch_id',
         'sale_date',
         'quantity_sold',
+        'revenue',
+        'cost',
+        'profit',
         'total_amount',
     ];
 
@@ -24,8 +28,18 @@ class Sale extends Model
         return $this->belongsTo(Product::class);
     }
 
+    public function batch()
+    {
+        return $this->belongsTo(Inventory::class, 'batch_id', 'batch_id');
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function inventory()
+    {
+        return $this->belongsTo(Inventory::class, 'batch_id', 'batch_id'); // Adjust the foreign key if necessary
     }
 }

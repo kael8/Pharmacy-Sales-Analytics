@@ -13,11 +13,10 @@
                   <div class="card-body">
                      <div class="form-group">
                         <div class="profile-img-edit position-relative d-flex justify-content-center">
-                        @php
-$profileImagePath = isset($profile_image->name) ? Storage::url($profile_image->name) : asset('images/avatars/01.png');
-                  @endphp
-                        
-                        <img id="profile-pic" src="{{ $profileImagePath }}" alt="User-Profile" class="profile-pic rounded avatar-100">
+
+
+                           <img id="profile-pic" src="{{ $profile_image->name ?? 'https://via.placeholder.com/100' }}"
+                              alt="User-Profile" class="profile-pic rounded avatar-100">
                         </div>
                         <div class="d-flex justify-content-center mt-3">
                            <button type="button" class="btn btn-primary"
@@ -38,9 +37,7 @@ $profileImagePath = isset($profile_image->name) ? Storage::url($profile_image->n
                         <h4 class="card-title">{{ isset($user) ? 'Edit User Information' : 'New User Information' }}
                         </h4>
                      </div>
-                     <div class="card-action">
-                        <a href="{{ route('users.index') }}" class="btn btn-sm btn-primary" role="button">Back</a>
-                     </div>
+
                   </div>
                   <div class="card-body">
                      <div class="new-user-info">
@@ -57,7 +54,7 @@ $profileImagePath = isset($profile_image->name) ? Storage::url($profile_image->n
                               <input type="text" name="lname" class="form-control" placeholder="Last Name"
                                  value="{{ $user->lname ?? '' }}" required>
                            </div>
-                         
+
                            <div class="form-group col-md-6">
                               <label class="form-label" for="phone">Mobile Number:</label>
                               <input type="phone" name="phone" class="form-control" placeholder="Mobile Number"
@@ -125,14 +122,36 @@ $profileImagePath = isset($profile_image->name) ? Storage::url($profile_image->n
             if (response.message) {
                alert(response.message);
                // Optionally, redirect or update the UI
-               window.location.href = '/viewStaff'; // Redirect to /viewStaff
+               window.location.href = '/admin/staff/viewStaff'; // Redirect to /viewStaff
             } else {
-               alert('An error occurred. Please try again.');
+               alert(response.errors);
             }
          },
          error: function (xhr, status, error) {
             console.error('Error:', error);
-            alert('An error occurred. Please try again.');
+
+            // Parse the JSON response
+            let response = JSON.parse(xhr.responseText);
+
+            // Check if the response contains validation errors
+            if (response.errors) {
+               let errorMessages = '';
+
+               // Loop through the errors and concatenate them into a single string
+               for (let field in response.errors) {
+                  if (response.errors.hasOwnProperty(field)) {
+                     response.errors[field].forEach(function (message) {
+                        errorMessages += message + '\n';
+                     });
+                  }
+               }
+
+               // Display the validation errors in an alert
+               alert(errorMessages);
+            } else {
+               // Display the general error message
+               alert('Error: ' + error);
+            }
          }
       });
    }

@@ -6,7 +6,11 @@
                <div class="col-md-6">
                   <div class="card card-transparent shadow-xl d-flex justify-content-center mb-0 auth-card">
                      <div class="card-body">
-                        <a href="{{route('dashboard')}}" class="navbar-brand d-flex justify-content-center mb-3">
+                     @php
+                  $dashboardRoute = auth()->user()->role === 'Staff' ? 'staff.dashboard' : (auth()->user()->role === 'Manager' ? 'manager.dashboard' : 'dashboard');
+               @endphp
+                     
+                     <a class="nav-link {{ activeRoute(route($dashboardRoute)) }}" aria-current="page" href="{{ route($dashboardRoute) }}">
                            <h4 class="logo-title text-center">{{env('APP_NAME')}}</h4>
                            <!-- Added text-center class here -->
                         </a>
