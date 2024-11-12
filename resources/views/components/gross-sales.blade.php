@@ -8,7 +8,7 @@
         <div class="dropdown">
             <a href="#" class="text-secondary dropdown-toggle" id="dropdownGrossSales" data-bs-toggle="dropdown"
                 aria-expanded="false">
-                This week</a>
+                This day</a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownGrossSales">
                 <li class="dropdown-item-dash" data-period="day">This Day</li>
                 <li class="dropdown-item-dash" data-period="week">This Week</li>
@@ -177,6 +177,6 @@
             });
         };
 
-        fetchGrossSales('week');
+        fetchGrossSales('day');
     });
 </script>

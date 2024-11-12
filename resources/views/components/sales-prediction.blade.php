@@ -6,7 +6,7 @@
         <div class="dropdown">
             <a href="#" class="text-secondary dropdown-toggle" id="dropdownSalesPredict" data-bs-toggle="dropdown"
                 aria-expanded="false">
-                This week
+                This day
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownSalesPredict">
                 <li class="dropdown-item-dash" data-period="day">Next Day</li>
@@ -18,12 +18,9 @@
     </div>
     <div class="card-body">
         <div style="overflow-x: auto;"><!-- Loading Spinner -->
-
-
-
-
             <canvas id="salesPredictChart"></canvas>
         </div>
+
     </div>
 </div>
 
@@ -109,8 +106,6 @@
                     }
                 });
             }
-
-
         };
 
         // Event listener for period selection
@@ -123,7 +118,6 @@
 
         // Function to fetch sales trends from the server
         const fetchSalesTrends = (period) => {
-
             $.ajax({
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 url: '{{ url("/sale/predict") }}/' + period,
@@ -136,13 +130,12 @@
                     const response = JSON.parse(xhr.responseText);
                     const errorMessage = response.message + "\n" + response.errors.join("\n");
                     alert(errorMessage);
-
                 }
             });
         };
 
         // Default chart load for 'week' period
-        fetchSalesTrends('week');
+        fetchSalesTrends('day');
 
 
     });

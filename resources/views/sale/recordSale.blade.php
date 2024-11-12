@@ -7,7 +7,7 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="header-title">
-                                <h4 class="card-title text-center">Purchase Sales</h4>
+                                <h4 class="card-title text-center">Purchase Items</h4>
                             </div>
                         </div>
                         <div class="table-responsive">

@@ -8,9 +8,26 @@
                         <div class="card-header d-flex justify-content-between">
                             <div class="header-title">
                                 <h4 class="card-title">
-                                    {{ isset($product) ? 'Edit Product' : (isset($batch) ? 'Edit Batch Information' : 'New Batch Information') }}
+                                    {{ isset($product) ? 'Edit Product Information' : (isset($batch) ? 'Edit Batch Information' : (request()->is('inventory/addProduct') ? 'Add Product Information' : 'New Batch Information')) }}
                                 </h4>
                             </div>
+                            @if (!isset($product) && !isset($batch) && !request()->is('inventory/addBatch'))
+                                <div class="header-action">
+                                    <!-- Create Batch Button -->
+                                    <a href="{{ route('addBatch') }}" class="btn btn-primary">
+                                        Create New Batch
+                                    </a>
+                                </div>
+                            @elseif(request()->is('inventory/editBatch/*'))
+                                <div class="header-action" style="margin-right: 100px;">
+                                    <!-- Edit Batch Search Bar -->
+                                    <input type="text" id="searchInput" class="form-control"
+                                        placeholder="Search Products...">
+                                    <div id="searchResults" class="list-group"
+                                        style="position: absolute; z-index: 1000; width: 100%;"></div>
+                                </div>
+                            @endif
+
 
                         </div>
                         <div class="card-body">
@@ -52,22 +69,22 @@
                                         <!-- Product Price -->
                                         <!-- Price -->
                                         <div class="form-group col-md-6">
-                                            <label class="form-label" for="product_price">Price: <span
+                                            <label class="form-label" for="product_price">Price Unit: <span
                                                     class="text-danger">*</span></label>
                                             <input type="number" name="product_price" id="product_price"
                                                 class="form-control" value="{{ isset($batch) ? $batch->price : '' }}"
-                                                placeholder="Price" required>
+                                                placeholder="Price Unit" required>
                                         </div>
                                     @endif
 
                                     @if($action != 'editProduct' && $action != 'addProduct')
                                         <!-- Cost Price -->
                                         <div class="form-group col-md-6">
-                                            <label class="form-label" for="cost_price">Cost Price: <span
+                                            <label class="form-label" for="cost_price">Price Ceiling: <span
                                                     class="text-danger">*</span></label>
                                             <input type="number" name="cost_price" id="cost_price" class="form-control"
                                                 value="{{ isset($batch) ? $batch->cost_price : '' }}"
-                                                placeholder="Cost Price" required>
+                                                placeholder="Price Ceiling" required>
                                         </div>
 
                                         <!-- Quantity -->
@@ -112,7 +129,7 @@
                                     <!-- Additional fields can go here -->
                                 </div>
                                 <button type="button" class="btn btn-primary" onclick="submitForm()">
-                                    {{ isset($product) ? 'Update Product' : (isset($batch) ? 'Update Batch' : 'Add Batch') }}
+                                    {{ isset($product) ? 'Update Product' : (isset($batch) ? 'Update Batch' : (request()->is('inventory/addProduct') ? 'Add Product' : (request()->is('inventory/addBatch') ? 'Add Batch' : 'Add Batch'))) }}
                                 </button>
                             </div>
                         </div>
@@ -135,7 +152,6 @@
     // Initialize Flatpickr on the expiration_date field
     flatpickr("#expiration_date", {
         dateFormat: "Y-m-d",
-        minDate: "today", // Prevent selecting past dates
         allowInput: true // Allow manual typing if needed
     });
 
@@ -197,8 +213,13 @@
                 console.error('Error:', error);
                 try {
                     var response = JSON.parse(xhr.responseText);
-                    if (response.errors && Array.isArray(response.errors)) {
-                        var errorMessage = response.errors.join("\n");
+                    if (response.errors && typeof response.errors === 'object') {
+                        var errorMessage = '';
+                        for (var key in response.errors) {
+                            if (response.errors.hasOwnProperty(key)) {
+                                errorMessage += response.errors[key].join("\n") + "\n";
+                            }
+                        }
                         alert(errorMessage);
                     } else if (response.message) {
                         alert(response.message);
@@ -211,4 +232,41 @@
             }
         });
     }
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (/^\/inventory\/editBatch\/\d+$/.test(window.location.pathname)) {
+            const searchInput = document.getElementById('searchInput');
+            const searchResults = document.getElementById('searchResults');
+            @if(isset($searchBatches))
+                const searchBatches = @json($searchBatches); // Convert PHP searchBatches array to JavaScript array
+            @else
+                const searchBatches = [];
+            @endif
+
+
+            searchInput.addEventListener('input', function () {
+                const query = searchInput.value.toLowerCase();
+
+                if (query.length > 0) { // Only search if the query is longer than 0 characters
+                    const filteredBatches = searchBatches.filter(batch => {
+                        return batch.product.product_name.toLowerCase().includes(query) ||
+                            batch.batch_id.toLowerCase().includes(query);
+                    });
+
+                    searchResults.innerHTML = ''; // Clear previous results
+
+                    filteredBatches.forEach(batch => {
+                        const resultItem = document.createElement('a');
+                        resultItem.href = '/inventory/editBatch/' + batch.id;
+                        resultItem.classList.add('list-group-item', 'list-group-item-action');
+                        resultItem.textContent = `${batch.product.product_name} - ${batch.batch_id}`;
+                        searchResults.appendChild(resultItem);
+                    });
+                } else {
+                    searchResults.innerHTML = ''; // Clear results if query is too short
+                }
+            });
+        }
+    });
 </script>

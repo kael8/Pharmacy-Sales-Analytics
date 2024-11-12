@@ -16,12 +16,14 @@ class SalesTableSeeder extends Seeder
     {
         $faker = Faker::create();
         $productIds = Product::pluck('id')->toArray(); // Get all existing product IDs
+        $userIds = DB::table('users')->pluck('id')->toArray(); // Get all existing user IDs
 
         DB::beginTransaction();
 
         try {
-            foreach (range(1, 500) as $index) { // Create 200 sales records, adjust as necessary
+            foreach (range(1, 500) as $index) { // Create 500 sales records, adjust as necessary
                 $productId = $faker->randomElement($productIds); // Pick a random product
+                $userId = $faker->randomElement($userIds); // Pick a random user
                 $product = Product::find($productId);
 
                 if ($product) {
@@ -40,6 +42,7 @@ class SalesTableSeeder extends Seeder
                         // Insert into sales
                         Sale::create([
                             'product_id' => $product->id,
+                            'user_id' => $userId, // Add user_id
                             'quantity_sold' => $quantitySold,
                             'cost' => $quantitySold * $inventory->cost_price, // Use the cost price from inventory
                             'profit' => ($quantitySold * $inventory->price) - ($quantitySold * $inventory->cost_price),
@@ -48,11 +51,15 @@ class SalesTableSeeder extends Seeder
                             'batch_id' => $inventory->batch_id // Include batch_id from the inventory
                         ]);
 
-                        // Create a new inventory record to reflect the remaining stock after the sale
+                        // Update the existing inventory record to reflect the remaining stock
+                        $inventory->quantity -= $quantitySold;
+                        $inventory->save();
+
+                        // Create a new inventory record to reflect the reduced stock
                         Inventory::create([
                             'product_id' => $product->id,
                             'batch_id' => $inventory->batch_id,
-                            'quantity' => $inventory->quantity - $quantitySold, // Remaining stock after sale
+                            'quantity' => $quantitySold, // Quantity sold
                             'price' => $inventory->price, // Use the price from the inventory
                             'cost_price' => $inventory->cost_price, // Use the cost price from the inventory
                             'action_type' => 'reduced',

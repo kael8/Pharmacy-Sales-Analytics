@@ -22,22 +22,21 @@
                                 <p>Total Batch Value: <strong id="totalValue"></strong></p>
                                 <p>Total Batches: <strong id="totalProducts"></strong></p>
                             </div>
-                            <!-- Create Batch Button -->
-                            <a href="{{ route('addBatch') }}" class="btn btn-primary">
-                                Create New Batch
-                            </a>
+
                         </div>
 
                         <div class="table-responsive">
                             <table class="table table-striped table-bordered table-hover">
                                 <thead class="thead-light">
                                     <tr>
-                                        <th scope="col">#</th>
-                                        <th scope="col">Batch ID</th>
-                                        <th scope="col">Product Name</th>
-                                        <th scope="col">Quantity</th>
-                                        <th scope="col">Price</th>
-                                        <th scope="col">Expiration Date</th>
+                                        <th scope="col" data-column="id" class="sortable">#</th>
+                                        <th scope="col" data-column="batch_id" class="sortable">Batch ID</th>
+                                        <th scope="col" data-column="product_name" class="sortable">Product Name</th>
+                                        <th scope="col" data-column="quantity" class="sortable">Remaining Stock</th>
+                                        <th scope="col" data-column="price" class="sortable">Price</th>
+                                        <th scope="col" data-column="expiration_date" class="sortable">Expiration Date
+                                        </th>
+                                        <th scope="col">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="batchesTableBody">
@@ -57,27 +56,75 @@
             </div>
         </div>
     </div>
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete this batch? This action cannot be undone.</p>
+                    <p><strong>Batch ID:</strong> <span id="modalBatchId"></span></p>
+                    <p><strong>Product Name:</strong> <span id="modalProductName"></span></p>
+                    <p><strong>Remaining Stock:</strong> <span id="modalQuantity"></span></p>
+                    <p><strong>Price:</strong> <span id="modalPrice"></span></p>
+                    <p><strong>Expiration Date:</strong> <span id="modalExpirationDate"></span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="confirmDelete" class="btn btn-danger">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
 
     <script>
-        function loadBatches(page = 1, searchQuery = '') {
+        let currentSortColumn = 'id';
+        let currentSortDirection = 'asc';
+
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            const results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+
+        function loadBatches(page = 1, searchQuery = '', sortColumn = 'id', sortDirection = 'asc') {
             $.ajax({
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 url: '{{ route('batches') }}', // Adjust this to your route
                 type: 'GET',
-                data: { page: page, search: searchQuery }, // Pass search query
+                data: { page: page, search: searchQuery, sort: sortColumn, direction: sortDirection }, // Pass search query and sorting parameters
                 success: (response) => {
                     const batchesTableBody = document.getElementById('batchesTableBody');
-                    batchesTableBody.innerHTML = response.data.map(batch => `
-                    <tr onclick="window.location.href='{{ url('inventory/editBatch') }}/${batch.id}'" style="cursor: pointer;">
-                        <th scope="row">${batch.id}</th>
-                        <td>${batch.batch_id}</td>
-                        <td>${batch.product.product_name}</td>
-                        <td>${batch.quantity}</td>
-                        <td>₱${parseFloat(batch.price).toFixed(2)}</td>
-                        <td>${batch.expiration_date}</td>
-                    </tr>
-                    `).join('');
+                    batchesTableBody.innerHTML = response.data.map(batch => {
+                        const expirationDate = new Date(batch.expiration_date);
+                        const currentDate = new Date();
+                        const isExpired = expirationDate < currentDate;
+                        const expiredIndicator = isExpired ? '<span class="badge bg-danger">Expired</span>' : '';
+
+
+
+                        return `
+    <tr style="cursor: pointer;">
+        <th scope="row">${batch.id}</th>
+        <td>${batch.batch_id}</td>
+        <td>${batch.product.product_name}</td>
+        <td>${batch.quantity}</td>
+        <td>₱${parseFloat(batch.price).toFixed(2)}</td>
+        <td>${batch.expiration_date} ${expiredIndicator}</td>
+        <td>
+            <a href="{{ url('inventory/editBatch') }}/${batch.id}" class="btn btn-sm btn-primary">Edit</a>
+            <button class="btn btn-sm btn-danger ms-2" data-id="${batch.batch_id}" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete</button>
+    
+        </td>
+    </tr>
+`;
+
+                    }).join('');
 
                     // Update pagination links
                     const paginationContainer = document.getElementById('paginationContainer');
@@ -111,7 +158,7 @@
                         link.addEventListener('click', function (e) {
                             e.preventDefault();
                             const page = this.getAttribute('data-page');
-                            loadBatches(page, document.getElementById('searchInput').value); // Include search query
+                            loadBatches(page, document.getElementById('searchInput').value, currentSortColumn, currentSortDirection); // Include search query and sorting parameters
                         });
                     });
 
@@ -127,12 +174,82 @@
 
         // Load the first page of batches on page load
         document.addEventListener('DOMContentLoaded', function () {
-            loadBatches();
+            // Get sorting parameters from URL
+            const urlSortColumn = getUrlParameter('sort') || 'product_name';
+            const urlSortDirection = getUrlParameter('direction') || 'asc';
+            currentSortColumn = urlSortColumn;
+            currentSortDirection = urlSortDirection;
+
+            loadBatches(1, '', currentSortColumn, currentSortDirection);
 
             // Handle search input keyup event
             document.getElementById('searchInput').addEventListener('keyup', function () {
                 const searchQuery = this.value;
-                loadBatches(1, searchQuery); // Trigger batch load with search query
+                loadBatches(1, searchQuery, currentSortColumn, currentSortDirection); // Trigger batch load with search query and sorting parameters
+            });
+
+            // Handle column header click event for sorting
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.addEventListener('click', function () {
+                    const column = this.getAttribute('data-column');
+                    if (currentSortColumn === column) {
+                        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSortColumn = column;
+                        currentSortDirection = 'asc';
+                    }
+                    loadBatches(1, document.getElementById('searchInput').value, currentSortColumn, currentSortDirection); // Trigger batch load with sorting parameters
+                });
+            });
+            // Delete button listener to set batch ID for deletion
+            const deleteModal = document.getElementById('deleteModal');
+            let deleteBatchId;
+
+            document.getElementById('batchesTableBody').addEventListener('click', function (event) {
+                const deleteButton = event.target.closest('.btn-danger');
+                if (deleteButton) {
+                    deleteBatchId = deleteButton.getAttribute('data-id');
+
+                    // Retrieve batch row information
+                    const batchRow = deleteButton.closest('tr');
+                    const batchId = batchRow.children[1].innerText;
+                    const productName = batchRow.children[2].innerText;
+                    const quantity = batchRow.children[3].innerText;
+                    const price = batchRow.children[4].innerText;
+                    const expirationDate = batchRow.children[5].innerText;
+
+                    // Set the batch details in the modal
+                    document.getElementById('modalBatchId').innerText = batchId;
+                    document.getElementById('modalProductName').innerText = productName;
+                    document.getElementById('modalQuantity').innerText = quantity;
+                    document.getElementById('modalPrice').innerText = price;
+                    document.getElementById('modalExpirationDate').innerText = expirationDate;
+                }
+            });
+
+
+            // Handle delete confirmation in the modal
+            document.getElementById('confirmDelete').addEventListener('click', function () {
+                if (deleteBatchId) {
+                    const deleteUrl = `{{ url('/deleteBatch') }}/${deleteBatchId}`;
+                    // Perform the delete operation, e.g., using AJAX
+                    $.ajax({
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        url: deleteUrl,
+                        type: 'POST',
+                        success: (response) => {
+                            // Hide the modal
+                            $('#deleteModal').modal('hide');
+                            // Reload batches or remove deleted row from DOM
+                            loadBatches();
+                        },
+                        error: (xhr) => {
+                            console.error('Delete error:', xhr.responseText);
+                            // Hide the modal in case of error as well
+                            $('#deleteModal').modal('hide');
+                        }
+                    });
+                }
             });
         });
     </script>

@@ -11,19 +11,22 @@ use Illuminate\Support\Carbon;
 use DateTime;
 use App\Models\Analytic;
 use InvalidArgumentException;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class SaleController extends Controller
 {
     public function recordSale()
     {
-        $items = Product::all();
+        $items = Product::orderBy('product_name', 'asc')->get();
         return view('sale.recordSale', compact('items'));
     }
 
     public function getBatches(Request $request)
     {
         $productId = $request->input('product_id');
-        $batches = Inventory::getBatchesByProduct($productId);
+        $batches = Inventory::getBatchesByProduct($productId)
+            ->where('expiration_date', '>', now())
+            ->where('quantity', '>', 0); // Filter out expired batches
 
         return response()->json([
             'batches' => $batches
@@ -120,6 +123,7 @@ class SaleController extends Controller
 
                 // Insert sale into the database
                 Sale::create([
+                    'user_id' => auth()->id(), // Assuming the authenticated user is recording the sale
                     'product_id' => $productId,
                     'batch_id' => $batchId,
                     'quantity_sold' => $quantitySold,
@@ -173,43 +177,55 @@ class SaleController extends Controller
 
     public function report(Request $request)
     {
-        // Validate the month input (year-month format)
+        // Validate the date input (year-month-day format)
         $request->validate([
-            'month' => 'required|date_format:Y-m',
+            'date' => 'required|date_format:Y-m-d',
         ]);
 
-        // Parse the month input to get the first day of the month
-        $month = $request->input('month');
-        $startDate = (new DateTime($month . '-01'))->format('Y-m-d');
+        // Extract the day from the input
+        $day = $request->input('date');
+        $startDate = Carbon::parse($day)->startOfDay();
+        $endDate = Carbon::parse($day)->endOfDay();
 
-        // Set the endDate to the last day of the month at 23:59:59
-        $endDate = (new DateTime($month . '-01'))
-            ->modify('last day of this month')
-            ->setTime(23, 59, 59) // Include the whole last day, up to 23:59:59
-            ->format('Y-m-d H:i:s');
-
-        // Query sales data based on the provided month, include related product and inventory details
+        // Query sales data based on the provided day, include related product and inventory details
         $sales = Sale::whereBetween('sale_date', [$startDate, $endDate])
+            ->whereHas('inventory_date', function ($query) {
+                $query->where('action_type', 'reduced');
+            })
             ->with(['product', 'inventory']) // Ensure Sale has relationships defined for Product and Inventory
-            ->orderBy('sale_date', 'desc') // Sort by sale_date in ascending order
-            ->paginate(15); // Pagination with 15 items per page
+            ->orderBy('sale_date', 'desc') // Sort by sale_date in descending order
+            ->get(); // Get all results
+
+        // Filter out records where the related inventory's action_type is not 'reduced'
+        $filteredSales = $sales->filter(function ($sale) {
+            return $sale->inventory && $sale->inventory->action_type === 'reduced';
+        });
+
+
+        // Paginate the filtered collection
+        $currentPage = LengthAwarePaginator::resolveCurrentPage();
+        $perPage = 15;
+        $currentPageItems = $filteredSales->slice(($currentPage - 1) * $perPage, $perPage)->all();
+        $paginatedSales = new LengthAwarePaginator($currentPageItems, $filteredSales->count(), $perPage);
+        $paginatedSales->setPath(request()->url());
+        $paginatedSales->appends(request()->query());
 
         // Calculate summary statistics for total sales, orders, and quantities
-        $totalSales = $sales->sum(function ($sale) {
+        $totalSales = $filteredSales->sum(function ($sale) {
             return $sale->inventory ? $sale->inventory->price * $sale->quantity_sold : 0; // Use inventory price
         });
-        $totalOrders = $sales->count(); // Number of orders
-        $totalQuantity = $sales->sum('quantity_sold'); // Total quantity of products sold
+        $totalOrders = $filteredSales->count(); // Number of orders
+        $totalQuantity = $filteredSales->sum('quantity_sold'); // Total quantity of products sold
 
         // Return the results as JSON with the pagination data
         return response()->json([
-            'sales' => $sales,
+            'sales' => $paginatedSales,
             'totalSales' => number_format($totalSales, 2), // Format total sales to 2 decimal places
             'totalOrders' => $totalOrders,
             'totalQuantity' => $totalQuantity,
-            'current_page' => $sales->currentPage(), // Current pagination page
-            'last_page' => $sales->lastPage(), // Last pagination page
-            'links' => $sales->links()->render(), // Optional: HTML pagination links
+            'current_page' => $paginatedSales->currentPage(), // Current pagination page
+            'last_page' => $paginatedSales->lastPage(), // Last pagination page
+            'links' => $paginatedSales->links()->render(), // Optional: HTML pagination links
         ]);
     }
 
@@ -303,7 +319,10 @@ class SaleController extends Controller
 
     private function getSalesData($period, $type)
     {
-        $query = Sale::query();
+        $query = Sale::with('inventory_date')
+            ->whereHas('inventory_date', function ($query) {
+                $query->where('action_type', 'reduced');
+            });
         [$startDate, $endDate] = $this->getDateRangeForPeriod($period);
 
         if ($startDate && $endDate) {
@@ -450,8 +469,9 @@ class SaleController extends Controller
             })
             ->join('inventories', function ($join) {
                 $join->on('sales.batch_id', '=', 'inventories.batch_id')
-                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+                    ->on('inventories.created_at', '=', 'sales.sale_date');
             })
+            ->where('inventories.action_type', 'reduced') // Filter based on action_type
             ->selectRaw('SUM(quantity_sold * price) as total_sales, SUM(cost) as total_cost');
 
         // Adjusting the query based on the period (day, week, month, year)
@@ -548,10 +568,11 @@ class SaleController extends Controller
             })
             ->join('inventories', function ($join) {
                 $join->on('sales.batch_id', '=', 'inventories.batch_id')
-                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+                    ->on('inventories.created_at', '=', 'sales.sale_date');
             })
             ->select('sales.product_id', 'products.product_name')
             ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, SUM(sales.total_amount) as total_revenue')
+            ->where('inventories.action_type', 'reduced') // Filter based on action_type
             ->groupBy('sales.product_id', 'products.product_name')
             ->orderBy('total_revenue', 'desc');
 
@@ -579,7 +600,7 @@ class SaleController extends Controller
         }
 
         // Limit to top 3 products
-        $results = $query->take(3)->get();
+        $results = $query->take(10)->get();
 
         // Format the response
         $data = $results->map(function ($item) {
@@ -619,7 +640,7 @@ class SaleController extends Controller
             })
             ->join('inventories', function ($join) {
                 $join->on('sales.batch_id', '=', 'inventories.batch_id')
-                    ->on('inventories.created_at', '=', 'latest_inv.latest_created_at');
+                    ->on('inventories.created_at', '=', 'sales.sale_date');
             })
             ->select('sales.product_id', 'products.product_name')
             ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, MAX(inventories.price) as inventory_price')
@@ -653,7 +674,7 @@ class SaleController extends Controller
         }
 
         // Execute the query and get the top 3 results
-        $results = $query->take(3)->get();
+        $results = $query->take(5)->get();
 
         // Map the results to include the total quantity sold and inventory price as floats
         $prices = $results->map(function ($item) {
@@ -678,9 +699,11 @@ class SaleController extends Controller
             $period = 'week';
         }
 
-        // Initialize the query to sum profits and join products table
-        $query = Sale::query()
-            ->join('products', 'sales.product_id', '=', 'products.id')
+        // Initialize the query to sum profits and join products and inventories tables
+        $query = Sale::with(['product', 'inventory_date'])
+            ->whereHas('inventory_date', function ($query) {
+                $query->where('action_type', 'reduced');
+            })
             ->selectRaw('SUM(profit) as total_profit');
 
         // Apply date filters and period grouping based on the selected period
@@ -884,6 +907,7 @@ class SaleController extends Controller
                 ];
             }
         }
+        $predictions = array_slice($predictions, 0, 15); // Limit to 15 products
 
         return response()->json($predictions);
     }
@@ -929,6 +953,79 @@ class SaleController extends Controller
         }
 
         return $predictedSales;
+    }
+
+
+    public function stock()
+    {
+        // Start the query, joining with the related product table
+        $query = Inventory::with('product')  // Load the related 'product' data
+            ->select('inventories.*')  // Select all columns from the 'inventories' table
+            ->join(
+                DB::raw('(SELECT MAX(created_at) as max_created_at, batch_id FROM inventories GROUP BY batch_id) as latest_batches'),
+                function ($join) {
+                    $join->on('inventories.batch_id', '=', 'latest_batches.batch_id')
+                        ->on('inventories.created_at', '=', 'latest_batches.max_created_at');
+                }
+            )
+            ->join('products', 'products.id', '=', 'inventories.product_id'); // Join with products table
+
+        // Get all results without pagination, searches, or sorting
+        $batches = $query->get();
+
+        // Attach the count of related sales data to each inventory batch
+        foreach ($batches as $batch) {
+            $batch->quantity_sold = Sale::where('batch_id', $batch->batch_id)
+                ->sum('quantity_sold');
+        }
+
+        // Return the batch data along with sales count
+        return response()->json([
+            'data' => $batches,  // The actual batch data
+        ]);
+    }
+
+    public function salesReport(Request $request)
+    {
+        // Validate the date input (year-month-day format)
+        $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+
+        // Extract the day from the input
+        $day = $request->input('date');
+        $startDate = Carbon::parse($day)->startOfDay();
+        $endDate = Carbon::parse($day)->endOfDay();
+
+        // Query sales data based on the provided day, include related product and inventory details
+        $sales = Sale::whereBetween('sale_date', [$startDate, $endDate])
+            ->whereHas('inventory_date', function ($query) {
+                $query->where('action_type', 'reduced');
+            })
+            ->with(['product', 'inventory']) // Ensure Sale has relationships defined for Product and Inventory
+            ->orderBy('sale_date', 'desc') // Sort by sale_date in descending order
+            ->get(); // Get all results
+
+        // Filter out records where the related inventory's action_type is not 'reduced'
+        $filteredSales = $sales->filter(function ($sale) {
+            return $sale->inventory && $sale->inventory->action_type === 'reduced';
+        });
+
+        // Calculate summary statistics for total sales, orders, and quantities
+        $totalSales = $filteredSales->sum(function ($sale) {
+            return $sale->inventory ? $sale->inventory->price * $sale->quantity_sold : 0; // Use inventory price
+        });
+        $totalOrders = $filteredSales->count(); // Number of orders
+        $totalQuantity = $filteredSales->sum('quantity_sold'); // Total quantity of products sold
+
+        // Return the results as JSON without pagination data
+        return response()->json([
+            'sales' => $filteredSales->values(), // Return all filtered sales
+            'totalSales' => number_format($totalSales, 2), // Format total sales to 2 decimal places
+            'totalOrders' => $totalOrders,
+            'totalQuantity' => $totalQuantity,
+        ]);
     }
 
 

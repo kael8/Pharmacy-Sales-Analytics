@@ -10,6 +10,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ManageStaffController;
 use App\Http\Controllers\InventoryController; // Add this line
 use App\Http\Controllers\SaleController; // Add this line
+use App\Http\Controllers\NotificationController; // Add this line
 use Illuminate\Support\Facades\Artisan;
 // Packages
 use Illuminate\Support\Facades\Route;
@@ -45,11 +46,18 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/get-batches', [SaleController::class, 'getBatches'])->name('getBatches');
     Route::get('/sale/viewSales', [SaleController::class, 'viewSales'])->name('viewSales');
 
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications');
+    Route::get('mark-as-viewed', [NotificationController::class, 'markAsViewed'])->name('markAsViewed');
+
     // Inventory Routes
     Route::get('/inventory/addProduct', [InventoryController::class, 'addProduct'])->name('addProduct');
     Route::get('/inventory/viewProducts', [InventoryController::class, 'viewProducts'])->name('viewProducts');
+    Route::get('/inventory/deleteProductView', [InventoryController::class, 'deleteProductView'])->name('deleteProductView');
+
     Route::get('/inventory/trackInventory', [InventoryController::class, 'trackInventory'])->name('trackInventory');
-    //Route::get('/inventory/editProduct/{id?}', [InventoryController::class, 'restock'])->name('editProduct');
+
+    Route::post('/deleteBatch/{batch_id?}', [InventoryController::class, 'deleteBatch'])->name('deleteBatch');
+    Route::post('/deleteProduct', [InventoryController::class, 'deleteProduct'])->name('deleteProduct');
     Route::get('/report/generate', [ReportController::class, 'generateReport'])->name('generateReport');
     Route::post('/report', [SaleController::class, 'report'])->name('report');
     Route::get('/products', [InventoryController::class, 'products'])->name('products');
@@ -62,6 +70,12 @@ Route::group(['middleware' => ['auth']], function () {
     Route::post('/updateBatch', [InventoryController::class, 'updateBatch'])->name('updateBatch');
     Route::get('/inventory/editProduct/{id?}', [InventoryController::class, 'editProduct'])->name('editProduct');
     Route::post('/inventory/updateProduct', [InventoryController::class, 'updateProduct'])->name('updateProduct');
+
+    Route::get('/total-sales', [ManageStaffController::class, 'getTotalSales']);
+
+
+    Route::get('/inventory/refund/{id?}', [InventoryController::class, 'refundView'])->name('refundView');
+    Route::post('/refund', [InventoryController::class, 'refund'])->name('refund');
 });
 
 // Manager routes
@@ -81,6 +95,7 @@ Route::group(['middleware' => ['auth', 'role:Manager']], function () {
     Route::get('/admin/staff/editStaff/{id?}', [ManageStaffController::class, 'addStaff'])->name('editStaff');
     Route::post('/updateStaff/{id}', [ManageStaffController::class, 'updateStaff'])->name('updateStaff');
 
+
     // Sale and Report Management
 
 
@@ -96,6 +111,8 @@ Route::group(['middleware' => ['auth', 'role:Manager']], function () {
     Route::get('/sale/top/{period?}', [SaleController::class, 'topProducts'])->name('sales.top');
     Route::get('/sale/trends/{period?}', [SaleController::class, 'trends'])->name('sales.trends');
     Route::get('/sale/predict/{period?}', [SaleController::class, 'predict'])->name('sales.predict');
+    Route::get('/sale/stock', [SaleController::class, 'stock'])->name('sales.stock');
+    Route::get('/sale/report', [SaleController::class, 'salesReport'])->name('sales.report');
     // Inventory Editing
 
 });

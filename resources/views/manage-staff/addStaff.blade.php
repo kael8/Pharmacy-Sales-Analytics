@@ -29,6 +29,24 @@
                      </div>
                   </div>
                </div>
+               @if(isset($user))
+
+               <div class="card" style="max-width: 400px; margin: auto;">
+                 <div class="card-header text-center">
+                   <h6 class="card-title">Total amount of Sales</h6>
+                 </div>
+                 <div class="card-body">
+                   <div class="form-group">
+                     <div class="d-flex justify-content-center mt-3">
+                        <input type="text" id="salesDate" class="form-control" style="max-width: 150px;">
+                     </div>
+                     <div class="d-flex justify-content-center mt-3">
+                        <h4 id="totalSales" class="text-primary">0</h4>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+            @endif
             </div>
             <div class="col-xl-9 col-lg-8">
                <div class="card">
@@ -93,6 +111,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
    integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<!-- Include Flatpickr -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@latest/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@latest"></script>
 <script>
    function previewImage(event) {
       const reader = new FileReader();
@@ -155,4 +177,36 @@
          }
       });
    }
+</script>
+
+<script>
+   document.addEventListener('DOMContentLoaded', function () {
+      // Initialize Flatpickr
+      const salesDatePicker = flatpickr("#salesDate", {
+         dateFormat: "Y-m-d",
+         defaultDate: new Date(), // Set default date to today
+         onChange: function (selectedDates, dateStr, instance) {
+            if (dateStr) {
+               fetchTotalSales(dateStr);
+            }
+         }
+      });
+
+      // Fetch total sales for today on page load
+      fetchTotalSales(salesDatePicker.input.value);
+
+      function fetchTotalSales(date) {
+        @if(isset($user->id))
+        const user_id = @json($user->id); // Convert PHP user ID to JavaScript variable
+    @else
+        const user_id = null;
+    @endif
+        fetch(`/total-sales?date=${date}&id=${user_id}`)
+            .then(response => response.json())
+            .then(data => {
+               document.getElementById('totalSales').textContent = '₱' + data.totalSales;
+            })
+            .catch(error => console.error('Error fetching sales:', error));
+      }
+   });
 </script>

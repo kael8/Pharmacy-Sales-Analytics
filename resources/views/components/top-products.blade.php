@@ -2,12 +2,11 @@
     <div class="card-header d-flex justify-content-between flex-wrap">
         <div class="header-title">
             <h4 class="card-title">Top Products</h4>
-
         </div>
         <div class="dropdown">
             <a href="#" class="text-secondary dropdown-toggle" id="dropdownTopProducts" data-bs-toggle="dropdown"
                 aria-expanded="false">
-                This week
+                This day
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownTopProducts">
                 <li class="dropdown-item-dash" data-period="day">This Day</li>
@@ -27,12 +26,18 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         let topProductsChart;
 
-        // Predefined list of Bootstrap colors
-        const bootstrapColors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8'];
+        // Expanded list of colors
+        const bootstrapColors = [
+            '#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8',
+            '#6610f2', '#6f42c1', '#e83e8c', '#fd7e14', '#20c997',
+            '#6c757d', '#343a40', '#007bff', '#28a745', '#dc3545',
+            '#ffc107', '#17a2b8', '#6610f2', '#6f42c1', '#e83e8c'
+        ];
 
         // Function to get color for a specific category
         const getCategoryColor = (index) => {
@@ -93,16 +98,7 @@
                                 }
                             }
                         },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: (context) => {
-                                        const label = context.dataset.label || '';
-                                        return `${label}: ₱${context.raw.toFixed(2)}`; // Format as currency
-                                    }
-                                }
-                            }
-                        }
+
                     },
                     plugins: [backgroundColorPlugin]
                 });
@@ -133,6 +129,6 @@
             });
         };
 
-        fetchTopProducts('week'); // Default period
+        fetchTopProducts('day'); // Default period
     });
 </script>

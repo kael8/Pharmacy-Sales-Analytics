@@ -4,7 +4,7 @@
             <div class="col-xl-12 col-lg-12">
                 <div class="card shadow-sm">
                     <div class="card-header text-center">
-                        <h4 class="card-title">Inventory</h4>
+                        <h4 class="card-title">Product List</h4>
                     </div>
 
                     <div class="card-body">
@@ -20,11 +20,11 @@
                             <table class="table table-striped table-bordered table-hover">
                                 <thead class="thead-light">
                                     <tr>
-                                        <th scope="col">#</th>
+                                        <th scope="col">Batch Id</th>
                                         <th scope="col">Product Name</th>
                                         <th scope="col">Product Description</th>
-                                        <th scope="col">Price</th>
-                                        <th scope="col">Quantity</th>
+                                        <th scope="col">Total Price</th>
+                                        <th scope="col">Remaining Stock</th>
                                     </tr>
                                 </thead>
                                 <tbody id="productsTableBody">
@@ -55,12 +55,12 @@
                 success: (response) => {
                     const productsTableBody = document.getElementById('productsTableBody');
                     productsTableBody.innerHTML = response.data.map(product => `
-                    <tr class="product-row" data-id="${product.id}">
-                        <th scope="row">${product.id}</th>
-                        <td>${product.product_name}</td>
-                        <td>${product.product_description}</td>
-                        <td>₱${parseFloat(product.total_price).toFixed(2)}</td>
-                        <td>${product.total_quantity}</td>
+                    <tr class="product-row" data-id="${product.product.id}">
+                        <td>${product.batch_id}</td>
+                        <td>${product.product.product_name}</td>
+                        <td>${product.product.product_description}</td>
+                        <td>₱${parseFloat(product.price * product.quantity).toFixed(2)}</td>
+                        <td>${product.quantity}</td>
                     </tr>
                     `).join('');
 

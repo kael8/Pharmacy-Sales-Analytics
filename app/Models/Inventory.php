@@ -40,4 +40,16 @@ class Inventory extends Model
             ->orderBy('created_at', 'desc')
             ->get();
     }
+
+    public function sales()
+    {
+        return $this->hasMany(Sale::class, 'sale_date', 'created_at');
+    }
+
+    public function salesWithBatchId()
+    {
+        return $this->sales()->where('batch_id', $this->batch_id);
+    }
+
+
 }

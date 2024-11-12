@@ -8,14 +8,14 @@
             </div>
 
             <div class="card-body">
-                <!-- Month Selection Form -->
+                <!-- Day Selection Form -->
                 <form id="filterForm" class="form-inline mb-4">
                     <div class="row w-100">
                         <div class="col-md-4 col-sm-12 mb-3">
                             <div class="form-group w-100">
-                                <label for="month" class="mr-2">Select Month:</label>
-                                <input type="month" id="month" name="month" class="form-control w-100"
-                                    value="{{ request('month', date('Y-m')) }}">
+                                <label for="date" class="mr-2">Select Date:</label>
+                                <input type="text" id="date" name="date" class="form-control w-100"
+                                    value="{{ request('date', date('Y-m-d')) }}">
                             </div>
                         </div>
                     </div>
@@ -65,56 +65,30 @@
 
     <!-- Include jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Include Flatpickr and Flatpickr Month Select Plugin -->
+    <!-- Include Flatpickr -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@latest/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr@latest/dist/plugins/monthSelect/index.js"></script>
-
-
-    <!-- Custom CSS for Month Grid Layout and Pagination -->
-    <style>
-        /* Month Grid Layout */
-        .flatpickr-monthSelect-months {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            gap: 10px;
-            padding: 10px;
-        }
-
-        .flatpickr-monthSelect-month {
-            text-align: center;
-            padding: 10px 0;
-            cursor: pointer;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-        }
-
-        .flatpickr-monthSelect-month:hover,
-        .flatpickr-monthSelect-month.selected {
-            background-color: #007bff;
-            color: #fff;
-        }
-
-        .flatpickr-monthSelect-theme-light .flatpickr-monthSelect-month {
-            background-color: #f9f9f9;
-        }
-    </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const monthInput = document.getElementById('month');
+            const dateInput = document.getElementById('date');
 
-            // Trigger initial sales load with the current month
-            sales(monthInput.value);
-
-            // Handle change event for month input
-            monthInput.addEventListener('change', (event) => {
-                event.preventDefault();
-                sales(monthInput.value);
+            // Initialize Flatpickr
+            flatpickr(dateInput, {
+                dateFormat: "Y-m-d",
+                defaultDate: new Date(), // Set default date to today
+                onChange: function (selectedDates, dateStr, instance) {
+                    if (dateStr) {
+                        fetchSales(dateStr);
+                    }
+                }
             });
 
-            function sales(month = null, page = 1) {
-                const data = { month: month || monthInput.value, page: page };
+            // Fetch total sales for today on page load
+            fetchSales(dateInput.value);
+
+            function fetchSales(date, page = 1) {
+                const data = { date: date, page: page };
 
                 $.ajax({
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
@@ -134,17 +108,16 @@
                             const localDate = saleDate.toLocaleString('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
 
                             return `
-        <tr>
-            <td>${sale.id}</td>
-            <td>${localDate.split(',')[0]}</td>
-            <td>${sale.product.product_name}</td>
-            <td>${sale.quantity_sold}</td>
-            <td>₱${parseFloat(sale.inventory.price).toFixed(2)}</td> <!-- Adjusted to get price from inventory -->
-            <td>₱${parseFloat(sale.inventory.price * sale.quantity_sold).toFixed(2)}</td> <!-- Calculate total price -->
-        </tr>
-    `;
+                    <tr>
+                        <td>${sale.id}</td>
+                        <td>${localDate.split(',')[0]}</td>
+                        <td>${sale.product.product_name}</td>
+                        <td>${sale.quantity_sold}</td>
+                        <td>₱${parseFloat(sale.inventory ? sale.inventory.price : 0).toFixed(2)}</td>
+                        <td>₱${parseFloat((sale.inventory ? sale.inventory.price : 0) * sale.quantity_sold).toFixed(2)}</td>
+                    </tr>
+                `;
                         }).join('');
-
 
                         // Update pagination links
                         const paginationContainer = document.getElementById('paginationContainer');
@@ -178,7 +151,7 @@
                             link.addEventListener('click', function (e) {
                                 e.preventDefault();
                                 const page = this.getAttribute('data-page');
-                                sales(month, page);
+                                fetchSales(date, page);
                             });
                         });
                     },
@@ -190,18 +163,7 @@
                     }
                 });
             }
-
-            function initializeFlatpickr(inputElement) {
-                flatpickr(inputElement, {
-                    dateFormat: "Y-m",
-                    plugins: [new monthSelectPlugin({
-                        shorthand: true,
-                        dateFormat: "Y-m",
-                        altFormat: "F Y",
-                        theme: "light"
-                    })]
-                });
-            }
         });
     </script>
+
 </x-app-layout>

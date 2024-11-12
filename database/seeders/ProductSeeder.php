@@ -47,6 +47,7 @@ class ProductSeeder extends Seeder
         $productsToInsert = [];
         $inventoriesToInsert = [];
         $batchesPerProduct = 3; // Number of batches per product
+        $baseBatchId = 24110999; // Starting batch ID
 
         // Prepare product data for batch insert
         foreach ($products as $data) {
@@ -66,8 +67,11 @@ class ProductSeeder extends Seeder
 
         foreach ($insertedProducts as $product) {
             for ($i = 0; $i < $batchesPerProduct; $i++) {
-                // Generate a unique batch_id for each batch
-                $batch_id = 'BATCH-' . strtoupper(uniqid());
+                // Generate a random stock date before today (up to 5 years ago)
+                $randomStockDate = Carbon::now()->subDays(rand(365, 1825));
+
+                // Increment the base batch ID
+                $baseBatchId++;
 
                 // Generate a random expiration date between today and 2 years from now
                 $expirationDate = Carbon::now()->addDays(rand(30, 730));
@@ -77,17 +81,14 @@ class ProductSeeder extends Seeder
                 $randomPrice = $this->getPhilippinePrice($product->product_name);
                 $randomCostPrice = $randomPrice * 0.7; // Set cost price as 70% of sale price
 
-                // Generate a random stock date before the sale date (up to 5 years ago)
-                $randomStockDate = Carbon::now()->subDays(rand(365, 1825));
-
                 // Prepare inventory data for multiple batches
                 $inventoriesToInsert[] = [
                     'product_id' => $product->id,
-                    'stock_date' => $randomStockDate, // Use the random stock date before sales
+                    'stock_date' => $randomStockDate, // Use the random stock date before today
                     'quantity' => $randomQuantity,
                     'price' => $randomPrice,
                     'expiration_date' => $expirationDate,
-                    'batch_id' => $batch_id,
+                    'batch_id' => $baseBatchId,
                     'cost_price' => $randomCostPrice,
                     'created_at' => $randomStockDate, // Set created_at to the stock date
                     'updated_at' => $randomStockDate, // Set updated_at to the stock date

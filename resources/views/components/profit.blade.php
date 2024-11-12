@@ -2,7 +2,7 @@
     <div class="row">
         <div class="col-9">
             <div class="progress-detail">
-                <p class="mb-1 font-weight-bold text-primary" style="font-size: 0.9rem;">Profit</p>
+                <p class="mb-1 font-weight-bold text-primary" style="font-size: 0.9rem;">Gross Profit</p>
                 <!-- Smaller font size -->
                 <h4 id="current-profit" style="font-size: 1.5rem;">₱0</h4>
                 <!-- Smaller font size -->
@@ -80,6 +80,6 @@
 
 
         // Optionally, trigger the AJAX request on page load with default period 'week'
-        fetchSalesCount('week');
+        fetchSalesCount('day');
     });
 </script>

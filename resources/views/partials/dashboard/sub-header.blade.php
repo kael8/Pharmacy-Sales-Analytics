@@ -2,8 +2,12 @@
     <div class="container-fluid iq-container">
         <div class="row">
             <div class="col-md-12">
-                <div class="d-flex justify-content-between align-items-center flex-wrap">
-
+                <div class="d-flex justify-content-end align-items-center flex-wrap">
+                    <!-- Date and Time Display -->
+                    <div id="dateTimeDisplay"
+                        style="text-align: center; font-family: Arial; font-size: 30px; color: #fff;">
+                        <!-- Date and time will be inserted here by JavaScript -->
+                    </div>
                 </div>
             </div>
         </div>

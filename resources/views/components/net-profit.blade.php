@@ -6,7 +6,7 @@
         <div class="dropdown">
             <a href="#" class="text-secondary dropdown-toggle" id="dropdownNetProfit" data-bs-toggle="dropdown"
                 aria-expanded="false">
-                This week
+                This day
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownNetProfit">
                 <li class="dropdown-item-dash" data-period="day">This Day</li>
@@ -44,9 +44,9 @@
             const datasets = [{
                 label: 'Net Profit',
                 data: profitData.map(dataPoint => parseFloat(dataPoint.total_profit)),
-                backgroundColor: periodColors[period], // Use solid color for entire dataset
+
                 borderColor: periodColors[period],     // Use the same color for line chart border
-                fill: true // Ensures the area under the line is filled with color
+
             }];
 
             // Create labels for each time period
@@ -120,6 +120,6 @@
             });
         };
 
-        fetchNetProfitData('week'); // Default period
+        fetchNetProfitData('day'); // Default period
     });
 </script>

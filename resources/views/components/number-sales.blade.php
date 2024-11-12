@@ -79,6 +79,6 @@
 
 
         // Optionally, trigger the AJAX request on page load with default period 'week'
-        fetchSalesCount('week');
+        fetchSalesCount('day');
     });
 </script>

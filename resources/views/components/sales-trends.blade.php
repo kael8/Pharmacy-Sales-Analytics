@@ -6,7 +6,7 @@
         <div class="dropdown">
             <a href="#" class="text-secondary dropdown-toggle" id="dropdownSalesTrends" data-bs-toggle="dropdown"
                 aria-expanded="false">
-                This week
+                This day
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownSalesTrends">
                 <li class="dropdown-item-dash" data-period="day">This Day</li>
@@ -20,6 +20,8 @@
         <div style="overflow-x: auto;">
             <canvas id="salesTrendsChart"></canvas>
         </div>
+        <!-- Percentages section -->
+        <div id="salesPercentages" class="mt-3"></div>
     </div>
 </div>
 
@@ -30,20 +32,13 @@
     document.addEventListener('DOMContentLoaded', () => {
         let salesTrendsChart;
 
-        // Predefined list of Bootstrap colors excluding gray
-        const bootstrapColors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8']; // Primary, Success, Danger, Warning, Info
+        const bootstrapColors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8'];
 
-        // Function to get color for a specific category
-        const getCategoryColor = (index) => {
-            return bootstrapColors[index % bootstrapColors.length];
-        };
+        const getCategoryColor = (index) => bootstrapColors[index % bootstrapColors.length];
 
-        // Function to update the sales trends chart as a pie chart
         const updateSalesTrendsChart = (salesData, period) => {
-            // Update the dropdown label with the selected period
             document.getElementById('dropdownSalesTrends').textContent = `This ${period}`;
 
-            // Aggregate sales data
             const productTotals = salesData.reduce((acc, dataPoint) => {
                 if (!acc[dataPoint.product_name]) {
                     acc[dataPoint.product_name] = {
@@ -55,21 +50,29 @@
                 return acc;
             }, {});
 
-            // Prepare data for the pie chart
             const labels = Object.keys(productTotals);
             const data = labels.map(label => productTotals[label].total_quantity_sold);
             const backgroundColors = labels.map((_, index) => getCategoryColor(index));
+            const totalSales = data.reduce((a, b) => a + b, 0);
 
-            // Initialize or update the pie chart
+            // Calculate and display percentages below the chart
+            const percentageDescriptions = labels.map((label, index) => {
+                const percentage = ((data[index] / totalSales) * 100).toFixed(2);
+                return `<span style="font-size: 12px; margin: 0;">${label}: ${percentage}%</span><br>`;
+            }).join('');
+            document.getElementById('salesPercentages').innerHTML = percentageDescriptions;
+
+            const canvas = document.getElementById('salesTrendsChart');
+
             if (salesTrendsChart) {
                 salesTrendsChart.data.labels = labels;
                 salesTrendsChart.data.datasets[0].data = data;
                 salesTrendsChart.data.datasets[0].backgroundColor = backgroundColors;
                 salesTrendsChart.update();
             } else {
-                const ctx = document.getElementById('salesTrendsChart').getContext('2d');
+                const ctx = canvas.getContext('2d');
                 salesTrendsChart = new Chart(ctx, {
-                    type: 'pie', // Set the chart type to pie
+                    type: 'pie',
                     data: {
                         labels: labels,
                         datasets: [{
@@ -78,6 +81,8 @@
                         }]
                     },
                     options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
                             tooltip: {
                                 callbacks: {
@@ -95,7 +100,6 @@
             }
         };
 
-        // Event listener for period selection
         document.querySelectorAll('.dropdown-item-dash').forEach(item => {
             item.addEventListener('click', function () {
                 const period = this.getAttribute('data-period');
@@ -103,14 +107,13 @@
             });
         });
 
-        // Function to fetch sales trends from the server
         const fetchSalesTrends = (period) => {
             $.ajax({
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 url: '{{ url("/sale/trends") }}/' + period,
                 type: 'GET',
                 success: (response) => {
-                    updateSalesTrendsChart(response, period); // Pass response data to update chart
+                    updateSalesTrendsChart(response, period);
                 },
                 error: (xhr) => {
                     console.error('Error:', xhr.responseText);
@@ -121,7 +124,6 @@
             });
         };
 
-        // Default chart load for 'week' period
-        fetchSalesTrends('week');
+        fetchSalesTrends('day');
     });
 </script>

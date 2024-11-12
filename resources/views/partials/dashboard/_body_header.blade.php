@@ -2,12 +2,12 @@
   <div class="container-fluid navbar-inner">
     @php
     $dashboardRoute = auth()->user()->role === 'Staff' ? 'staff.dashboard' : (auth()->user()->role === 'Manager' ? 'manager.dashboard' : 'dashboard');
-    @endphp
+  @endphp
 
     <a class="nav-link {{ activeRoute(route($dashboardRoute)) }}" aria-current="page"
       href="{{ route($dashboardRoute) }}">
 
-      <h4 class="logo-title">{{env('APP_NAME')}}</h4>
+      <h3 class="logo-title">{{env('APP_NAME')}}</h3>
     </a>
     <div class="sidebar-toggle" data-toggle="sidebar" data-active="true">
       <i class="icon">
@@ -27,9 +27,22 @@
       </span>
     </button>
     <div class="collapse navbar-collapse" id="navbarSupportedContent">
-      <ul class="navbar-nav ms-auto  navbar-list mb-2 mb-lg-0">
+      <ul class="navbar-nav ms-auto navbar-list mb-2 mb-lg-0">
 
-
+        <!-- Notification Dropdown -->
+        <li class="nav-item dropdown">
+          <a class="nav-link" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown"
+            aria-expanded="false">
+            <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 2C10.34 2 9 3.34 9 5V6.29C7.72 6.63 6.63 7.72 6.29 9H5C3.9 9 3 9.9 3 11V12C3 13.1 3.9 14 5 14H6V17C6 18.1 6.9 19 8 19H16C17.1 19 18 18.1 18 17V14H19C20.1 14 21 13.1 21 12V11C21 9.9 20.1 9 19 9H17.71C17.37 7.72 16.28 6.63 15 6.29V5C15 3.34 13.66 2 12 2M12 4C12.55 4 13 4.45 13 5V6H11V5C11 4.45 11.45 4 12 4M5 11V12H19V11H5M8 16V14H16V16H8Z" />
+            </svg>
+            <span class="badge bg-danger" id="notificationCount">3</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationDropdown" id="notificationList">
+            <li><a class="dropdown-item" href="#">Loading...</a></li>
+          </ul>
+        </li>
 
         <li class="nav-item dropdown">
           <a class="nav-link py-0 d-flex align-items-center" href="#" id="navbarDropdown" role="button"
@@ -54,9 +67,6 @@
             </div>
           </a>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-
-
-
             <li>
               <form method="POST" action="{{route('logout')}}">
                 @csrf
@@ -72,3 +82,69 @@
     </div>
   </div>
 </nav>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('notificationDropdown').addEventListener('click', function () {
+      viewNotifications();
+    });
+
+    function viewNotifications() {
+      $.ajax({
+        url: '{{ route('markAsViewed') }}',
+        method: 'GET',
+        success: function (data) {
+
+        },
+        error: function (error) {
+          console.error('Error viewing notifications:', error);
+        }
+      });
+    }
+
+    function fetchNotifications() {
+      $.ajax({
+        url: '{{ route('notifications') }}',
+        method: 'GET',
+        success: function (data) {
+          $('#notificationList').empty();
+          if (data.length > 0) {
+            data.forEach(function (notification) {
+              const expirationDate = new Date(notification.expiration_date);
+              const currentDate = new Date();
+              const timeDiff = expirationDate - currentDate;
+              const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+              let colorClass = '';
+              let message = '';
+
+              if (daysDiff < 0) {
+                colorClass = 'text-danger'; // Red for expired
+                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') has expired on ' + notification.expiration_date;
+              } else if (daysDiff <= 7) {
+                colorClass = 'text-warning'; // Yellow for less than or equal to 7 days
+                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring soon on ' + notification.expiration_date;
+              } else if (daysDiff <= 30) {
+                colorClass = 'text-info'; // Blue for less than or equal to 30 days
+                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
+              } else {
+                colorClass = 'text-success'; // Green for more than 30 days
+                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
+              }
+
+              $('#notificationList').append('<li><a class="dropdown-item ' + colorClass + '" href="/inventory/viewInventoryBatches?sort=expiration_date">' + message + '</a></li>');
+            });
+            $('#notificationCount').text(data.length);
+          } else {
+            $('#notificationList').html('<li><a class="dropdown-item" href="#">No notifications</a></li>');
+            $('#notificationCount').text('0');
+          }
+        },
+        error: function (error) {
+          console.error('Error fetching notifications:', error);
+        }
+      });
+    }
+    fetchNotifications();
+  });
+</script>

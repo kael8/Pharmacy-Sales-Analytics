@@ -42,4 +42,8 @@ class Sale extends Model
     {
         return $this->belongsTo(Inventory::class, 'batch_id', 'batch_id'); // Adjust the foreign key if necessary
     }
+    public function inventory_date()
+    {
+        return $this->belongsTo(Inventory::class, 'sale_date', 'created_at'); // Adjust the foreign key if necessary
+    }
 }

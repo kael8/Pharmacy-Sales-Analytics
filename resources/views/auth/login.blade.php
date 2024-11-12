@@ -11,7 +11,7 @@
 
                         <h4 class="logo-title text-center">{{env('APP_NAME')}}</h4>
 
-                        <h2 class="mb-2 justify-content-center text-center">Sign In</h2>
+                        <h2 class="mb-2 justify-content-center text-center">Log In</h2>
                         <p class="justify-content-center text-center">Login to stay connected.</p>
                         <x-auth-session-status class="mb-4" :status="session('status')" />
                         <x-auth-validation-errors class="mb-4" :errors="$errors" />
@@ -34,18 +34,11 @@
                                        autocomplete="current-password">
                                  </div>
                               </div>
-                              <div class="col-lg-6">
-                                 <div class="form-check mb-3">
-                                    <input type="checkbox" class="form-check-input" id="customCheck1">
-                                    <label class="form-check-label" for="customCheck1">Remember Me</label>
-                                 </div>
-                              </div>
+
                               <div class="d-flex justify-content-center">
                                  <button type="submit" class="btn btn-primary"> {{ __('sign up') }}</button>
                               </div>
-                              <div class="col-lg-6">
-                                 <a href="{{route('auth.recoverpw')}}" class="float-end">Forgot Password?</a>
-                              </div>
+
                            </div>
                         </form>
                      </div>

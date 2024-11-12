@@ -9,6 +9,7 @@ use App\Models\Image;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
+use App\Models\Sale;
 
 class ManageStaffController extends Controller
 {
@@ -147,4 +148,21 @@ class ManageStaffController extends Controller
         return view('manage-staff.recordSale');
     }
 
+   public function getTotalSales(Request $request)
+    {
+        // Validate the date input
+        $request->validate([
+            'date' => 'required|date',
+            'id' => 'nullable|exists:users,id',
+        ]);
+
+        // Fetch the total amount of sales for the specific day
+        $date = $request->input('date');
+        $user_id = $request->input('id') ?? auth()->id();
+        $totalSales = Sale::where('user_id', $user_id)
+            ->whereDate('sale_date', $date)
+            ->sum('total_amount');
+
+        return response()->json(['totalSales' => $totalSales]);
+    }
 }
