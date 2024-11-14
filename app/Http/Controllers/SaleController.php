@@ -616,9 +616,6 @@ class SaleController extends Controller
     }
 
 
-
-
-
     public function trends($period = 'week')
     {
         // Ensure the requested period is valid
@@ -643,51 +640,71 @@ class SaleController extends Controller
                     ->on('inventories.created_at', '=', 'sales.sale_date');
             })
             ->select('sales.product_id', 'products.product_name')
-            ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, MAX(inventories.price) as inventory_price')
-            ->groupBy('sales.product_id', 'products.product_name')
-            ->orderBy('total_quantity_sold', 'desc');
+            ->selectRaw('SUM(sales.quantity_sold) as total_quantity_sold, MAX(inventories.price) as inventory_price');
 
         // Adjust the query based on the selected period
         switch ($period) {
             case 'day':
                 $query->whereDate('sales.sale_date', date('Y-m-d'))
                     ->selectRaw('HOUR(sale_date) as period')
-                    ->groupBy(DB::raw('HOUR(sale_date)'))
-                    ->orderBy(DB::raw('HOUR(sale_date)'), 'asc');
+                    ->groupBy('sales.product_id', 'products.product_name', 'period');
                 break;
 
             case 'week':
                 $startOfWeek = date('Y-m-d', strtotime('monday this week'));
                 $endOfWeek = date('Y-m-d', strtotime('sunday this week'));
-                $query->whereBetween('sales.sale_date', [$startOfWeek, $endOfWeek]);
+                $query->whereBetween('sales.sale_date', [$startOfWeek, $endOfWeek])
+                    ->selectRaw('DATE(sale_date) as period')
+                    ->groupBy('sales.product_id', 'products.product_name', 'period');
                 break;
 
             case 'month':
                 $startOfMonth = date('Y-m-01');
                 $endOfMonth = date('Y-m-t');
-                $query->whereBetween('sales.sale_date', [$startOfMonth, $endOfMonth]);
+                $query->whereBetween('sales.sale_date', [$startOfMonth, $endOfMonth])
+                    ->selectRaw('WEEK(sale_date) as period')
+                    ->groupBy('sales.product_id', 'products.product_name', 'period');
                 break;
 
             case 'year':
-                $query->whereYear('sales.sale_date', date('Y'));
+                $query->whereYear('sales.sale_date', date('Y'))
+                    ->selectRaw('MONTH(sale_date) as period')
+                    ->groupBy('sales.product_id', 'products.product_name', 'period');
                 break;
         }
 
-        // Execute the query and get the top 3 results
-        $results = $query->take(5)->get();
+        // Execute the query and get the results
+        $results = $query->get();
 
-        // Map the results to include the total quantity sold and inventory price as floats
-        $prices = $results->map(function ($item) {
+        // Group the results by product and period
+        $groupedResults = $results->groupBy('product_name');
+
+        // Calculate the total quantity sold for each product and sort by it
+        $sortedResults = $groupedResults->map(function ($items, $productName) {
+            $totalQuantitySold = $items->sum('total_quantity_sold');
             return [
-                'product_id' => $item->product_id,
-                'product_name' => $item->product_name,
-                'total_quantity_sold' => (float) $item->total_quantity_sold,
-                'inventory_price' => (float) $item->inventory_price,
+                'product_name' => $productName,
+                'total_quantity_sold' => $totalQuantitySold,
+                'data' => $items->map(function ($item) {
+                    return [
+                        'period' => $item->period,
+                        'total_quantity_sold' => (float) $item->total_quantity_sold,
+                        'inventory_price' => (float) $item->inventory_price,
+                    ];
+                })
+            ];
+        })->sortByDesc('total_quantity_sold')->take(5);
+
+        // Format the data for the line graph
+        $formattedData = $sortedResults->values()->map(function ($item) {
+            return [
+                'product_name' => $item['product_name'],
+                'data' => $item['data']
             ];
         });
 
         // Return the results as JSON
-        return response()->json($prices);
+        return response()->json($formattedData);
     }
 
 

@@ -69,7 +69,7 @@
             };
 
             const costDataset = {
-                label: 'Cost',
+                label: 'Gross Profit',
                 data: salesData.map(dataPoint => ({
                     x: formatPeriodLabel(dataPoint.period, period), // x-axis label
                     y: parseFloat(dataPoint.total_cost) // Cost value

@@ -80,11 +80,11 @@
                                     @if($action != 'editProduct' && $action != 'addProduct')
                                         <!-- Cost Price -->
                                         <div class="form-group col-md-6">
-                                            <label class="form-label" for="cost_price">Price Ceiling: <span
+                                            <label class="form-label" for="cost_price">Profit: <span
                                                     class="text-danger">*</span></label>
                                             <input type="number" name="cost_price" id="cost_price" class="form-control"
-                                                value="{{ isset($batch) ? $batch->cost_price : '' }}"
-                                                placeholder="Price Ceiling" required>
+                                                value="{{ isset($batch) ? $batch->cost_price : '' }}" placeholder="Profit"
+                                                required>
                                         </div>
 
                                         <!-- Quantity -->

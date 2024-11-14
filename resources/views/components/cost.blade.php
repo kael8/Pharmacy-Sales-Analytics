@@ -2,7 +2,7 @@
     <div class="row">
         <div class="col-9">
             <div class="progress-detail">
-                <p class="mb-1 font-weight-bold text-primary" style="font-size: 0.9rem;">Cost</p>
+                <p class="mb-1 font-weight-bold text-primary" style="font-size: 0.9rem;">Gross Profit</p>
                 <!-- Smaller font size -->
                 <h4 id="current-cost" style="font-size: 1.5rem;">₱0</h4>
                 <!-- Smaller font size -->

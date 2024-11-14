@@ -2,7 +2,7 @@
   <div class="container-fluid navbar-inner">
     @php
     $dashboardRoute = auth()->user()->role === 'Staff' ? 'staff.dashboard' : (auth()->user()->role === 'Manager' ? 'manager.dashboard' : 'dashboard');
-  @endphp
+    @endphp
 
     <a class="nav-link {{ activeRoute(route($dashboardRoute)) }}" aria-current="page"
       href="{{ route($dashboardRoute) }}">
@@ -108,33 +108,58 @@
         method: 'GET',
         success: function (data) {
           $('#notificationList').empty();
-          if (data.length > 0) {
-            data.forEach(function (notification) {
+          const quantityNotifications = data.quantity_notifications;
+          const expirationNotifications = data.expiration_notifications;
+
+          if (quantityNotifications.length > 0 || expirationNotifications.length > 0) {
+            // Handle quantity notifications
+            quantityNotifications.forEach(function (notification) {
+              const initialQuantity = notification.initial_quantity; // Assuming initial_quantity is provided
+              const currentQuantity = notification.quantity;
+              const percentageRemaining = (currentQuantity / initialQuantity) * 100;
+
+              let quantityColorClass = '';
+              let quantityMessage = '';
+
+              if (percentageRemaining > 50) {
+                quantityColorClass = 'text-success'; // Green for 100% to 51%
+                quantityMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') has ' + percentageRemaining.toFixed(2) + '% remaining.';
+              } else if (percentageRemaining > 10) {
+                quantityColorClass = 'text-warning'; // Yellow for 50% to 11%
+                quantityMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') has ' + percentageRemaining.toFixed(2) + '% remaining.';
+              } else {
+                quantityColorClass = 'text-danger'; // Red for 10% to 1%
+                quantityMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') has ' + percentageRemaining.toFixed(2) + '% remaining.';
+              }
+
+              $('#notificationList').append('<li><a class="dropdown-item ' + quantityColorClass + '" href="/inventory/viewInventoryBatches?sort=quantity">' + quantityMessage + '</a></li>');
+            });
+
+            // Handle expiration notifications
+            expirationNotifications.forEach(function (notification) {
               const expirationDate = new Date(notification.expiration_date);
               const currentDate = new Date();
               const timeDiff = expirationDate - currentDate;
               const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
-              let colorClass = '';
-              let message = '';
+              let expirationColorClass = '';
+              let expirationMessage = '';
 
-              if (daysDiff < 0) {
-                colorClass = 'text-danger'; // Red for expired
-                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') has expired on ' + notification.expiration_date;
-              } else if (daysDiff <= 7) {
-                colorClass = 'text-warning'; // Yellow for less than or equal to 7 days
-                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring soon on ' + notification.expiration_date;
+              if (daysDiff <= 7) {
+                expirationColorClass = 'text-danger'; // Red for less than or equal to 7 days
+                expirationMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring soon on ' + notification.expiration_date;
               } else if (daysDiff <= 30) {
-                colorClass = 'text-info'; // Blue for less than or equal to 30 days
-                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
+                expirationColorClass = 'text-warning'; // Yellow for less than or equal to 30 days
+                expirationMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
               } else {
-                colorClass = 'text-success'; // Green for more than 30 days
-                message = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
+                expirationColorClass = 'text-success'; // Green for more than 30 days
+                expirationMessage = 'Product ' + notification.product.product_name + ' (Batch: ' + notification.batch_id + ') is expiring on ' + notification.expiration_date;
               }
 
-              $('#notificationList').append('<li><a class="dropdown-item ' + colorClass + '" href="/inventory/viewInventoryBatches?sort=expiration_date">' + message + '</a></li>');
+              $('#notificationList').append('<li><a class="dropdown-item ' + expirationColorClass + '" href="/inventory/viewInventoryBatches?sort=expiration_date">' + expirationMessage + '</a></li>');
             });
-            $('#notificationCount').text(data.length);
+
+            $('#notificationCount').text(quantityNotifications.length + expirationNotifications.length);
           } else {
             $('#notificationList').html('<li><a class="dropdown-item" href="#">No notifications</a></li>');
             $('#notificationCount').text('0');

@@ -532,7 +532,7 @@ class InventoryController extends Controller
             $refund = Inventory::create([
                 'product_id' => $inventory->product_id,
                 'stock_date' => $latestInventory->stock_date,
-                'quantity' => $quantity_refund + $latestInventory->quantity,
+                'quantity' => $inventory->quantity + $quantity_refund,
                 'price' => $latestInventory->price,
                 'expiration_date' => $latestInventory->expiration_date,
                 'batch_id' => $inventory->batch_id,

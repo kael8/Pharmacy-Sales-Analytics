@@ -36,7 +36,7 @@
                               </div>
 
                               <div class="d-flex justify-content-center">
-                                 <button type="submit" class="btn btn-primary"> {{ __('sign up') }}</button>
+                                 <button type="submit" class="btn btn-primary"> {{ __('log in') }}</button>
                               </div>
 
                            </div>

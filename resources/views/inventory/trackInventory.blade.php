@@ -129,7 +129,7 @@
         <td>${item.product.product_name}</td>
         <td>${formattedDate}</td>
         <td>${parseInt(Number(item.quantity) + Number(item.quantity_sold) ?? 0)}</td>
-        <td>${item.action_type === 'cancelled' ? 0 : (item.quantity_sold ?? (item.action_type === 'added' ? 0 : (item.action_type === 'adjustment' ? 'Adjusted' : 0)))}</td>
+        <td>${item.action_type === 'cancelled' ? 0 : (item.quantity_sold ?? (item.action_type === 'added' ? 0 : (item.action_type === 'adjustment' ? 0 : 0)))}</td>
         <td>${item.quantity}</td>
         <td>${item.action_type === 'refunded' ? item.refunded_amount : 0}</td>
         <td id="refund_${item.id}">

@@ -20,14 +20,10 @@
         <div style="overflow-x: auto;">
             <canvas id="salesTrendsChart"></canvas>
         </div>
-        <!-- Percentages section -->
-        <div id="salesPercentages" class="mt-3"></div>
     </div>
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         let salesTrendsChart;
@@ -39,65 +35,56 @@
         const updateSalesTrendsChart = (salesData, period) => {
             document.getElementById('dropdownSalesTrends').textContent = `This ${period}`;
 
-            const productTotals = salesData.reduce((acc, dataPoint) => {
-                if (!acc[dataPoint.product_name]) {
-                    acc[dataPoint.product_name] = {
-                        total_quantity_sold: 0,
-                        inventory_price: dataPoint.inventory_price
-                    };
-                }
-                acc[dataPoint.product_name].total_quantity_sold += parseInt(dataPoint.total_quantity_sold);
-                return acc;
-            }, {});
+            // Get all unique periods
+            const periods = [...new Set(Object.values(salesData).flatMap(product => product.data.map(item => item.period)))].sort((a, b) => a - b);
+            const datasets = Object.values(salesData).map((product, index) => {
+                return {
+                    label: product.product_name,
+                    data: periods.map(period => {
+                        const item = product.data.find(d => d.period === period);
+                        return item ? item.total_quantity_sold : 0;
+                    }),
+                    borderColor: getCategoryColor(index),
+                    backgroundColor: getCategoryColor(index), // Add transparency to the fill color
 
-            const labels = Object.keys(productTotals);
-            const data = labels.map(label => productTotals[label].total_quantity_sold);
-            const backgroundColors = labels.map((_, index) => getCategoryColor(index));
-            const totalSales = data.reduce((a, b) => a + b, 0);
-
-            // Calculate and display percentages below the chart
-            const percentageDescriptions = labels.map((label, index) => {
-                const percentage = ((data[index] / totalSales) * 100).toFixed(2);
-                return `<span style="font-size: 12px; margin: 0;">${label}: ${percentage}%</span><br>`;
-            }).join('');
-            document.getElementById('salesPercentages').innerHTML = percentageDescriptions;
+                };
+            });
 
             const canvas = document.getElementById('salesTrendsChart');
 
             if (salesTrendsChart) {
-                salesTrendsChart.data.labels = labels;
-                salesTrendsChart.data.datasets[0].data = data;
-                salesTrendsChart.data.datasets[0].backgroundColor = backgroundColors;
-                salesTrendsChart.update();
-            } else {
-                const ctx = canvas.getContext('2d');
-                salesTrendsChart = new Chart(ctx, {
-                    type: 'pie',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: data,
-                            backgroundColor: backgroundColors
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: (context) => {
-                                        const productName = context.label;
-                                        const totalQuantitySold = context.raw;
-                                        const inventoryPrice = productTotals[productName].inventory_price;
-                                        return `${totalQuantitySold} units sold, Price: $${inventoryPrice}`;
-                                    }
+                salesTrendsChart.destroy(); // Destroy the existing chart instance
+            }
+
+            const ctx = canvas.getContext('2d');
+            salesTrendsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: periods,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const productName = context.dataset.label;
+                                    const totalQuantitySold = context.raw;
+                                    const periodLabel = context.label;
+                                    console.log(`Context:`, context);
+                                    console.log(`Product: ${productName}, Period: ${periodLabel}`);
+                                    const productData = Object.values(salesData).find(product => product.product_name === productName).data.find(d => d.period.toString() === periodLabel);
+                                    console.log(`Product Data:`, productData);
+                                    const inventoryPrice = productData ? productData.inventory_price : 'N/A';
+                                    return `${productName}: ${totalQuantitySold} units sold, Price: $${inventoryPrice}`;
                                 }
                             }
                         }
                     }
-                });
-            }
+                }
+            });
         };
 
         document.querySelectorAll('.dropdown-item-dash').forEach(item => {
@@ -113,6 +100,7 @@
                 url: '{{ url("/sale/trends") }}/' + period,
                 type: 'GET',
                 success: (response) => {
+                    console.log('Sales Data:', response); // Log the sales data
                     updateSalesTrendsChart(response, period);
                 },
                 error: (xhr) => {
