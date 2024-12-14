@@ -108,6 +108,7 @@
             </i>
         </a>
         <ul class="sub-nav collapse" id="horizontal-menu-sales" data-bs-parent="#sidebar">
+            @role('Staff')
             <li class="nav-item">
                 <a class="nav-link {{activeRoute(route('recordSale'))}}" href="{{route('recordSale')}}">
                     <i class="icon">
@@ -116,6 +117,7 @@
                     <span class="item-name">Purchase Items</span>
                 </a>
             </li>
+            @endrole
             <li class="nav-item">
                 <a class="nav-link {{activeRoute(route('viewSales'))}}" href="{{route('viewSales')}}">
                     <i class="icon">
@@ -183,6 +185,7 @@
                     <span class="item-name">Add New Products</span>
                 </a>
             </li>
+            @role('Manager')
             <li class=" nav-item ">
                 <a class="nav-link {{activeRoute(route('deleteProductView'))}}" href="{{route('deleteProductView')}}">
                     <i class="icon">
@@ -196,6 +199,7 @@
                     <span class="item-name">Delete Products</span>
                 </a>
             </li>
+            @endrole
             <li class=" nav-item ">
                 <a class="nav-link {{activeRoute(route('trackInventory'))}}" href="{{route('trackInventory')}}">
                     <i class="icon svg-icon">
@@ -225,6 +229,18 @@
                     <span class="item-name">Inventory Batches</span>
                 </a>
             </li>
+
+            <li class="nav-item">
+                <a class="nav-link {{activeRoute(route('viewExpiredBatches'))}}" href="{{route('viewExpiredBatches')}}">
+                    <i class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" viewBox="0 0 24 24" fill="currentColor">
+                            <g>
+                                <circle cx="12" cy="12" r="8" fill="currentColor"></circle>
+                            </g>
+                        </svg>
+                    </i>
+                    <i class="sidenav-mini-icon"> B </i>
+                    <span class="item-name">Expired Batches</span></a>
 
 
         </ul>

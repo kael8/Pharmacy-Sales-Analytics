@@ -35,18 +35,17 @@
         const updateSalesTrendsChart = (salesData, period) => {
             document.getElementById('dropdownSalesTrends').textContent = `This ${period}`;
 
-            // Get all unique periods
-            const periods = [...new Set(Object.values(salesData).flatMap(product => product.data.map(item => item.period)))].sort((a, b) => a - b);
             const datasets = Object.values(salesData).map((product, index) => {
                 return {
                     label: product.product_name,
-                    data: periods.map(period => {
-                        const item = product.data.find(d => d.period === period);
-                        return item ? item.total_quantity_sold : 0;
-                    }),
+                    data: product.data.map(item => ({
+                        x: item.period,
+                        y: item.total_quantity_sold
+                    })),
                     borderColor: getCategoryColor(index),
-                    backgroundColor: getCategoryColor(index), // Add transparency to the fill color
-
+                    backgroundColor: getCategoryColor(index),
+                    showLine: true, // Ensure only points are shown
+                    pointRadius: 5, // Adjust the size of the points
                 };
             });
 
@@ -60,23 +59,35 @@
             salesTrendsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: periods,
                     datasets: datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Period'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Total Quantity Sold'
+                            }
+                        }
+                    },
                     plugins: {
                         tooltip: {
                             callbacks: {
                                 label: (context) => {
                                     const productName = context.dataset.label;
-                                    const totalQuantitySold = context.raw;
-                                    const periodLabel = context.label;
-                                    console.log(`Context:`, context);
-                                    console.log(`Product: ${productName}, Period: ${periodLabel}`);
-                                    const productData = Object.values(salesData).find(product => product.product_name === productName).data.find(d => d.period.toString() === periodLabel);
-                                    console.log(`Product Data:`, productData);
+                                    const totalQuantitySold = context.raw.y;
+                                    const periodLabel = context.raw.x;
+                                    const productData = Object.values(salesData).find(product => product.product_name === productName).data.find(d => d.period === periodLabel);
                                     const inventoryPrice = productData ? productData.inventory_price : 'N/A';
                                     return `${productName}: ${totalQuantitySold} units sold, Price: $${inventoryPrice}`;
                                 }
@@ -100,7 +111,6 @@
                 url: '{{ url("/sale/trends") }}/' + period,
                 type: 'GET',
                 success: (response) => {
-                    console.log('Sales Data:', response); // Log the sales data
                     updateSalesTrendsChart(response, period);
                 },
                 error: (xhr) => {

@@ -18,6 +18,20 @@
                                     value="{{ request('date', date('Y-m-d')) }}">
                             </div>
                         </div>
+                        <div class="col-md-4 col-sm-12 mb-3"></div>
+                        @role('Manager')
+                        <div class="col-md-4 col-sm-12 mb-3 end">
+                            <div class="form-group w-100">
+                                <label for="staff" class="mr-2">Select Staff:</label>
+                                <select id="staff" name="staff" class="form-control w-100">
+                                    <option value="">All Staff</option>
+                                    @foreach($staffs as $staff)
+                                        <option value="{{ $staff->id }}">{{ $staff->fname . ' ' . $staff->lname }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                        @endrole
                     </div>
                 </form>
 
@@ -39,12 +53,12 @@
                     <table class="table table-bordered table-hover">
                         <thead class="thead-light">
                             <tr>
-                                <th>Sale ID</th>
-                                <th>Date</th>
-                                <th>Product Name</th>
-                                <th>Quantity</th>
-                                <th>Unit Price</th>
-                                <th>Total Price</th>
+                                <th class="text-center">Sale ID</th>
+                                <th class="text-center">Date</th>
+                                <th class="text-center">Product Name</th>
+                                <th class="text-center">Quantity</th>
+                                <th class="text-center">Unit Price</th>
+                                <th class="text-center">Total Price</th>
                             </tr>
                         </thead>
                         <tbody id="salesTableBody">
@@ -72,6 +86,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const dateInput = document.getElementById('date');
+            const staffSelect = document.getElementById('staff') ?? '';
 
             // Initialize Flatpickr
             flatpickr(dateInput, {
@@ -79,16 +94,23 @@
                 defaultDate: new Date(), // Set default date to today
                 onChange: function (selectedDates, dateStr, instance) {
                     if (dateStr) {
-                        fetchSales(dateStr);
+                        fetchSales(dateStr, staffSelect.value);
                     }
                 }
             });
 
             // Fetch total sales for today on page load
-            fetchSales(dateInput.value);
+            fetchSales(dateInput.value, staffSelect.value);
 
-            function fetchSales(date, page = 1) {
-                const data = { date: date, page: page };
+            if (staffSelect != '') {
+                // Fetch sales when staff selection changes
+                staffSelect.addEventListener('change', () => {
+                    fetchSales(dateInput.value, staffSelect.value);
+                });
+            }
+
+            function fetchSales(date, staff, page = 1) {
+                const data = { date: date, staff: staff, page: page };
 
                 $.ajax({
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
@@ -105,12 +127,20 @@
                         const salesTableBody = document.getElementById('salesTableBody');
                         salesTableBody.innerHTML = response.sales.data.map(sale => {
                             const saleDate = new Date(sale.sale_date);
-                            const localDate = saleDate.toLocaleString('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
+                            const localDate = saleDate.toLocaleString('en-US', {
+                                timeZone: 'Asia/Manila',
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            });
 
                             return `
                     <tr>
                         <td>${sale.id}</td>
-                        <td>${localDate.split(',')[0]}</td>
+                        <td>${localDate}</td>
                         <td>${sale.product.product_name}</td>
                         <td>${sale.quantity_sold}</td>
                         <td>₱${parseFloat(sale.inventory ? sale.inventory.price : 0).toFixed(2)}</td>
@@ -151,7 +181,7 @@
                             link.addEventListener('click', function (e) {
                                 e.preventDefault();
                                 const page = this.getAttribute('data-page');
-                                fetchSales(date, page);
+                                fetchSales(date, staff, page);
                             });
                         });
                     },

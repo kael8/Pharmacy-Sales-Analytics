@@ -34,7 +34,7 @@ class ManageStaffController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|string|email|max:255|unique:users,email', // Ensure email is unique in the users table
             'password' => 'required|string|min:8|confirmed', // Confirms with a field named `password_confirmation`
-            'profile_image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048', // Optional image upload validation
+            'profile_image' => 'required|image|mimes:jpeg,png,jpg,gif|max:20480', // Optional image upload validation
         ]);
 
         DB::beginTransaction();
@@ -99,7 +99,7 @@ class ManageStaffController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id, // Unique email validation except for the current user
             'password' => 'nullable|string|min:8|confirmed', // Password is optional on update
-            'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Optional image upload validation
+            'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:20480', // Optional image upload validation
         ]);
 
         // Handle profile image upload if a new one is provided
@@ -148,7 +148,7 @@ class ManageStaffController extends Controller
         return view('manage-staff.recordSale');
     }
 
-   public function getTotalSales(Request $request)
+    public function getTotalSales(Request $request)
     {
         // Validate the date input
         $request->validate([

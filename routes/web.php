@@ -76,6 +76,14 @@ Route::group(['middleware' => ['auth']], function () {
 
     Route::get('/inventory/refund/{id?}', [InventoryController::class, 'refundView'])->name('refundView');
     Route::post('/refund', [InventoryController::class, 'refund'])->name('refund');
+
+    Route::get('/inventory/viewExpiredBatches', [InventoryController::class, 'viewExpiredBatches'])->name('viewExpiredBatches');
+    Route::get('/inventory/expiredBatches', [InventoryController::class, 'expiredBatches'])->name('expiredBatches');
+
+    Route::get('/logout', function () {
+        Auth::logout();
+        return redirect()->route('login');
+    })->name('logout');
 });
 
 // Manager routes

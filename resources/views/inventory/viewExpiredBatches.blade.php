@@ -4,7 +4,7 @@
             <div class="col-xl-12 col-lg-12">
                 <div class="card shadow-sm">
                     <div class="card-header text-center">
-                        <h4 class="card-title">Inventory Batches</h4>
+                        <h4 class="card-title">Expired Batches</h4>
                     </div>
 
                     <div class="card-body">
@@ -36,7 +36,7 @@
                                         <th scope="col" data-column="price" class="sortable">Price</th>
                                         <th scope="col" data-column="expiration_date" class="sortable">Expiration Date
                                         </th>
-                                        <th scope="col">Actions</th>
+
                                     </tr>
                                 </thead>
                                 <tbody id="batchesTableBody">
@@ -95,7 +95,7 @@
         function loadBatches(page = 1, searchQuery = '', sortColumn = 'id', sortDirection = 'asc') {
             $.ajax({
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                url: '{{ route('batches') }}', // Adjust this to your route
+                url: '{{ route('expiredBatches') }}', // Adjust this to your route
                 type: 'GET',
                 data: { page: page, search: searchQuery, sort: sortColumn, direction: sortDirection }, // Pass search query and sorting parameters
                 success: (response) => {
@@ -116,11 +116,7 @@
         <td>${batch.quantity}</td>
         <td>₱${parseFloat(batch.price).toFixed(2)}</td>
         <td>${batch.expiration_date} ${expiredIndicator}</td>
-        <td>
-            <a href="{{ url('inventory/editBatch') }}/${batch.id}" class="btn btn-sm btn-primary">Edit</a>
-            @role('Manager')<button class="btn btn-sm btn-danger ms-2" data-id="${batch.batch_id}" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete</button>@endrole
-    
-        </td>
+       
     </tr>
 `;
 

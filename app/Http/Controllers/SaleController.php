@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use DateTime;
 use App\Models\Analytic;
+use App\Models\User;
 use InvalidArgumentException;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -17,7 +18,8 @@ class SaleController extends Controller
 {
     public function recordSale()
     {
-        $items = Product::orderBy('product_name', 'asc')->get();
+        $items = Product::where('isRemoved', false)
+            ->orderBy('product_name', 'asc')->get();
         return view('sale.recordSale', compact('items'));
     }
 
@@ -171,8 +173,12 @@ class SaleController extends Controller
 
     public function viewSales(Request $request)
     {
+        $staffs = null;
+        if (auth()->user()->role == 'Manager') {
+            $staffs = User::where('role', 'Staff')->get();
+        }
 
-        return view('sale.viewSales');
+        return view('sale.viewSales', compact('staffs'));
     }
 
     public function report(Request $request)
@@ -187,20 +193,28 @@ class SaleController extends Controller
         $startDate = Carbon::parse($day)->startOfDay();
         $endDate = Carbon::parse($day)->endOfDay();
 
-        // Query sales data based on the provided day, include related product and inventory details
-        $sales = Sale::whereBetween('sale_date', [$startDate, $endDate])
+        // Initialize the query
+        $query = Sale::whereBetween('sale_date', [$startDate, $endDate])
             ->whereHas('inventory_date', function ($query) {
                 $query->where('action_type', 'reduced');
             })
             ->with(['product', 'inventory']) // Ensure Sale has relationships defined for Product and Inventory
-            ->orderBy('sale_date', 'desc') // Sort by sale_date in descending order
-            ->get(); // Get all results
+            ->orderBy('sale_date', 'desc'); // Sort by sale_date in descending order
+
+        // Filter by staff if provided
+        if ($request->has('staff') && $request->input('staff') != '') {
+            $query->where('user_id', $request->input('staff'));
+        }
+
+        if (auth()->user()->role == 'Staff') {
+            $query->where('user_id', auth()->id());
+        }
+
+        // Get all results
+        $sales = $query->get();
 
         // Filter out records where the related inventory's action_type is not 'reduced'
-        $filteredSales = $sales->filter(function ($sale) {
-            return $sale->inventory && $sale->inventory->action_type === 'reduced';
-        });
-
+        $filteredSales = $sales;
 
         // Paginate the filtered collection
         $currentPage = LengthAwarePaginator::resolveCurrentPage();
@@ -977,6 +991,9 @@ class SaleController extends Controller
     {
         // Start the query, joining with the related product table
         $query = Inventory::with('product')  // Load the related 'product' data
+            ->wherehas('product', function ($query) {
+                $query->where('isRemoved', false);
+            })
             ->select('inventories.*')  // Select all columns from the 'inventories' table
             ->join(
                 DB::raw('(SELECT MAX(created_at) as max_created_at, batch_id FROM inventories GROUP BY batch_id) as latest_batches'),
@@ -985,7 +1002,9 @@ class SaleController extends Controller
                         ->on('inventories.created_at', '=', 'latest_batches.max_created_at');
                 }
             )
-            ->join('products', 'products.id', '=', 'inventories.product_id'); // Join with products table
+            ->join('products', 'products.id', '=', 'inventories.product_id') // Join with products table
+            ->where('inventories.action_type', '!=', 'removed') // Filter based on action_type
+            ->where('inventories.expiration_date', '>', now()); // Filter out expired inventory
 
         // Get all results without pagination, searches, or sorting
         $batches = $query->get();
@@ -1025,9 +1044,7 @@ class SaleController extends Controller
             ->get(); // Get all results
 
         // Filter out records where the related inventory's action_type is not 'reduced'
-        $filteredSales = $sales->filter(function ($sale) {
-            return $sale->inventory && $sale->inventory->action_type === 'reduced';
-        });
+        $filteredSales = $sales;
 
         // Calculate summary statistics for total sales, orders, and quantities
         $totalSales = $filteredSales->sum(function ($sale) {

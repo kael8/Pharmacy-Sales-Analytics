@@ -15,6 +15,7 @@ class Product extends Model
         'id',
         'product_name',
         'product_description',
+        'isRemoved',
         'price',
         'quantity_in_stock',
     ];

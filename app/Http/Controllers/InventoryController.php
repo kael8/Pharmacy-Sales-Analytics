@@ -84,7 +84,8 @@ class InventoryController extends Controller
                         ->on('inventories.created_at', '=', 'latest_batches.max_created_at');
                 }
             )
-            ->join('products', 'products.id', '=', 'inventories.product_id'); // Join with products table
+            ->join('products', 'products.id', '=', 'inventories.product_id') // Join with products table
+            ->where('expiration_date', '>', now()); // Filter for expired batches
 
         // Apply the search filter if provided
         if ($searchQuery) {
@@ -133,6 +134,9 @@ class InventoryController extends Controller
 
         // Start the query, joining with the related product table
         $query = Inventory::with('product')  // Load the related 'product' data
+            ->wherehas('product', function ($query) {
+                $query->where('isRemoved', false);
+            })
             ->select('inventories.*')  // Select all columns from the 'inventories' table
             ->join(
                 DB::raw('(SELECT MAX(created_at) as max_created_at, batch_id FROM inventories GROUP BY batch_id) as latest_batches'),
@@ -141,7 +145,8 @@ class InventoryController extends Controller
                         ->on('inventories.created_at', '=', 'latest_batches.max_created_at');
                 }
             )
-            ->join('products', 'products.id', '=', 'inventories.product_id'); // Join with products table
+            ->join('products', 'products.id', '=', 'inventories.product_id') // Join with products table
+            ->where('action_type', '!=', 'removed'); // Exclude cancelled items
 
         // Apply the search filter if provided
         if ($searchQuery) {
@@ -322,10 +327,16 @@ class InventoryController extends Controller
     public function trackInventory()
     {
         // Fetch all products for filter dropdowns
-        $products = Product::orderBy('product_name', 'asc')->get();
+        $products = Product::where('isRemoved', false)
+            ->orderBy('product_name', 'asc')->get();
 
         // Fetch unique batch IDs from the Inventory table and group them by batch_id
         $batches = Inventory::select('batch_id')
+            ->with('product')
+            ->whereHas('product', function ($query) {
+                $query->where('isRemoved', false);
+            })
+            ->where('action_type', '!=', 'removed')
             ->groupBy('batch_id')
             ->orderBy('batch_id', 'desc')
             ->get();
@@ -343,7 +354,11 @@ class InventoryController extends Controller
         $sale_count = [];
 
         $query = Inventory::with('product')
+            ->whereHas('product', function ($query) {
+                $query->where('isRemoved', false);
+            })
             ->where('action_type', '!=', 'cancelled') // Exclude cancelled items
+            ->where('action_type', '!=', 'removed') // Exclude removed items
             ->orderBy('created_at', 'desc');
 
         // Apply filters based on selected product and batch
@@ -353,6 +368,11 @@ class InventoryController extends Controller
         if ($batch_id) {
             $query->where('batch_id', $batch_id);
         }
+
+        $removedBatch = Inventory::where('action_type', 'removed')->get();
+
+        // Filter out removed batches from the query
+        $query->whereNotIn('batch_id', $removedBatch->pluck('batch_id'));
 
         $inventory = $query->paginate(10); // Paginate by 10 items per page
 
@@ -407,6 +427,7 @@ class InventoryController extends Controller
         // Extract unique batches from inventory
         $uniqueBatches = Inventory::where('product_id', $product_id)
             ->where('quantity', '>', 0) // Exclude batches with a quantity of 0
+            ->where('action_type', '!=', 'removed') // Exclude removed items
             ->select('batch_id', 'price', 'quantity', 'created_at')
             ->whereIn('id', function ($query) use ($product_id) {
                 $query->select(DB::raw('MAX(id)'))
@@ -518,21 +539,24 @@ class InventoryController extends Controller
             $inventory = Inventory::with('salesWithBatchId')->findOrFail($request->id);
 
             // Sum the quantity sold from the related sales
-            $quantity_refund = $inventory->sales->sum('quantity_sold');
+            $sales = Sale::where('batch_id', $inventory->batch_id)
+                ->where('sale_date', $inventory->created_at)
+                ->first();
+            $quantity_refund = $sales->quantity_sold;
 
             $inventory->action_type = 'cancelled';
             $inventory->save();
 
             // Get latest inventory record for the product
             $latestInventory = Inventory::where('batch_id', $inventory->batch_id)
-                ->where('action_type', '!=', 'cancelled')
+
                 ->orderBy('created_at', 'desc')
                 ->first();
 
             $refund = Inventory::create([
                 'product_id' => $inventory->product_id,
                 'stock_date' => $latestInventory->stock_date,
-                'quantity' => $inventory->quantity + $quantity_refund,
+                'quantity' => $latestInventory->quantity + $quantity_refund,
                 'price' => $latestInventory->price,
                 'expiration_date' => $latestInventory->expiration_date,
                 'batch_id' => $inventory->batch_id,
@@ -564,7 +588,7 @@ class InventoryController extends Controller
 
     public function deleteProductView()
     {
-        $products = Product::all();
+        $products = Product::where('isRemoved', false)->get();
 
         return view('inventory.deleteProduct', compact('products'));
     }
@@ -583,15 +607,14 @@ class InventoryController extends Controller
             // Delete related notifications, sales, and refunds
             foreach ($inventories as $inventory) {
                 Notification::where('inventory_id', $inventory->id)->delete();
-                RefundAmount::where('inventory_id', $inventory->id)->delete();
+
             }
 
-            Sale::where('product_id', $product->id)->delete();
-            Inventory::where('product_id', $product->id)->delete();
 
-            // Delete the product
-            $product->delete();
 
+            // Update the product to 'isRemoved' status
+            $product->isRemoved = true;
+            $product->save();
             DB::commit();
 
             return response()->json([
@@ -612,30 +635,114 @@ class InventoryController extends Controller
         DB::beginTransaction();
 
         try {
-            // Find the inventory records with the given batch ID
-            $batches = Inventory::where('batch_id', $batchId)->get();
+            // Find the latest inventory records with the given batch ID
+            $batch = Inventory::where('batch_id', $batchId)
+                ->orderBy('created_at', 'desc')
+                ->first();
 
-            // Delete related notifications, sales, and refunds
-            foreach ($batches as $batch) {
-                Notification::where('inventory_id', $batch->id)->delete();
-                RefundAmount::where('inventory_id', $batch->id)->delete();
-            }
+            // Create new inventory records with action_type 'removed'
 
-            Sale::where('batch_id', $batchId)->delete();
-            Inventory::where('batch_id', $batchId)->delete();
+            Inventory::create([
+                'product_id' => $batch->product_id,
+                'batch_id' => $batch->batch_id,
+                'stock_date' => $batch->stock_date,
+                'expiration_date' => $batch->expiration_date,
+                'quantity' => $batch->quantity,
+                'price' => $batch->price,
+                'action_type' => 'removed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // Delete related notifications and refunds
+            Notification::where('inventory_id', $batch->id)->delete();
+
+
+
+
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Batch deleted successfully',
+                'message' => 'Batch removed successfully',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
 
             return response()->json([
-                'message' => 'Failed to delete batch',
+                'message' => 'Failed to remove batch',
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function viewExpiredBatches()
+    {
+        return view('inventory.viewExpiredBatches');
+    }
+
+    public function expiredBatches(Request $request)
+    {
+        // Get the search query and sorting parameters from the request
+        $searchQuery = $request->input('search');
+        $sortColumn = $request->input('sort', 'product_name'); // Default sort column to 'product_name'
+        $sortDirection = $request->input('direction', 'asc'); // Default sort direction
+
+        // Start the query, joining with the related product table
+        $query = Inventory::with('product')  // Load the related 'product' data
+            ->wherehas('product', function ($query) {
+                $query->where('isRemoved', false);
+            })
+            ->select('inventories.*')  // Select all columns from the 'inventories' table
+            ->join(
+                DB::raw('(SELECT MAX(created_at) as max_created_at, batch_id FROM inventories GROUP BY batch_id) as latest_batches'),
+                function ($join) {
+                    $join->on('inventories.batch_id', '=', 'latest_batches.batch_id')
+                        ->on('inventories.created_at', '=', 'latest_batches.max_created_at');
+                }
+            )
+            ->join('products', 'products.id', '=', 'inventories.product_id') // Join with products table
+            ->where('expiration_date', '<', now()); // Filter for expired batches
+
+        // Apply the search filter if provided
+        if ($searchQuery) {
+            $query->whereHas('product', function ($subQuery) use ($searchQuery) {
+                $subQuery->where(function ($query) use ($searchQuery) {
+                    $query->where('product_name', 'like', '%' . $searchQuery . '%')
+                        ->orWhere('inventories.batch_id', 'like', '%' . $searchQuery . '%'); // Explicitly use 'inventories.batch_id'
+                });
+            });
+        }
+
+        // Apply sorting
+        if ($sortColumn == 'product_name') {
+            $query->orderBy('products.product_name', $sortDirection);
+        } else {
+            $query->orderBy($sortColumn, $sortDirection);
+        }
+
+        // Calculate total product value and total products from filtered inventory records
+        $totalProductValue = $query->get()->sum(function ($batch) {
+            return $batch->price * $batch->quantity;  // Calculate product value
+        });
+
+        $totalProducts = $query->count();  // Count the total number of unique batches
+
+        // Paginate the results
+        $batches = $query->paginate(15);
+
+        // Return the paginated batch data and additional information
+        return response()->json([
+            'totalProductValue' => $totalProductValue,  // Total value of products
+            'totalProducts' => $totalProducts,  // Total number of product batches
+            'data' => $batches->items(),  // The actual batch data for this page
+            'current_page' => $batches->currentPage(),  // Current page number
+            'last_page' => $batches->lastPage(),  // Last page number
+            'next_page_url' => $batches->nextPageUrl(),  // URL for the next page
+            'prev_page_url' => $batches->previousPageUrl(),  // URL for the previous page
+            'from' => $batches->firstItem(),  // First item on the current page
+            'to' => $batches->lastItem(),  // Last item on the current page
+            'total' => $batches->total(),  // Total number of records across all pages
+        ]);
     }
 }

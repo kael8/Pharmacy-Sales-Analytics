@@ -1,4 +1,13 @@
 <x-app-layout :assets="$assets ?? []">
+   <style>
+      .total-sales {
+         word-wrap: break-word;
+         white-space: nowrap;
+         overflow: hidden;
+         text-overflow: ellipsis;
+         max-width: 100%;
+      }
+   </style>
    <div>
       <form id="staff-form" enctype="multipart/form-data">
          @csrf
@@ -41,7 +50,7 @@
                         <input type="text" id="salesDate" class="form-control" style="max-width: 150px;">
                      </div>
                      <div class="d-flex justify-content-center mt-3">
-                        <h4 id="totalSales" class="text-primary">0</h4>
+                        <h4 id="totalSalesD" class="text-primary text-center total-sales">0</h4>
                      </div>
                    </div>
                  </div>
@@ -104,6 +113,78 @@
                </div>
             </div>
          </div>
+         @php
+         $currentUrl = url()->current();
+         $isEditStaffPage = preg_match('/\/admin\/staff\/editStaff\/\d+$/', $currentUrl);
+        @endphp
+         @if($isEditStaffPage)
+          <div class="row mt-4">
+            <div class="col-12"><!-- Sales Report Card -->
+               <div class="card shadow-sm">
+                 <!-- Header -->
+                 <div class="card-header">
+                   <h1 class="card-title text-center">Sales Report</h1>
+                 </div>
+
+                 <div class="card-body">
+                   <!-- Day Selection Form -->
+                   <form id="filterForm" class="form-inline mb-4">
+                     <div class="row w-100">
+                        <div class="col-md-4 col-sm-12 mb-3">
+                          <div class="form-group w-100">
+                            <label for="date" class="mr-2">Select Date:</label>
+                            <input type="text" id="date" name="date" class="form-control w-100"
+                              value="{{ request('date', date('Y-m-d')) }}">
+                          </div>
+                        </div>
+
+
+                     </div>
+                   </form>
+
+                   <!-- Summary Statistics -->
+                   <div class="row text-center mb-4">
+                     <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalSales" class="card-text">Total Sales: ₱0.00</h5>
+                     </div>
+                     <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalOrders" class="card-text">Total Orders: 0</h5>
+                     </div>
+                     <div class="col-md-4 col-sm-12 mb-3">
+                        <h5 id="totalQuantity" class="card-text">Total Quantity Sold: 0</h5>
+                     </div>
+                   </div>
+
+                   <!-- Detailed Sales Data Table -->
+                   <div class="table-responsive">
+                     <table class="table table-bordered table-hover">
+                        <thead class="thead-light">
+                          <tr>
+                            <th class="text-center">Sale ID</th>
+                            <th class="text-center">Date</th>
+                            <th class="text-center">Product Name</th>
+                            <th class="text-center">Quantity</th>
+                            <th class="text-center">Unit Price</th>
+                            <th class="text-center">Total Price</th>
+                          </tr>
+                        </thead>
+                        <tbody id="salesTableBody">
+                          <!-- Table rows will be filled dynamically -->
+                        </tbody>
+                     </table>
+                   </div>
+
+                   <!-- Pagination Container -->
+                   <div class="d-flex justify-content-center mt-4">
+                     <ul class="pagination" id="paginationContainer">
+                        <!-- Pagination links will be inserted here -->
+                     </ul>
+                   </div>
+                 </div>
+               </div>
+            </div>
+          </div>
+       @endif
       </form>
    </div>
 </x-app-layout>
@@ -196,17 +277,131 @@
       fetchTotalSales(salesDatePicker.input.value);
 
       function fetchTotalSales(date) {
-        @if(isset($user->id))
-        const user_id = @json($user->id); // Convert PHP user ID to JavaScript variable
-    @else
-        const user_id = null;
+         @if(isset($user->id))
+          const user_id = @json($user->id); // Convert PHP user ID to JavaScript variable
+       @else
+       const user_id = null;
     @endif
-        fetch(`/total-sales?date=${date}&id=${user_id}`)
+         fetch(`/total-sales?date=${date}&id=${user_id}`)
             .then(response => response.json())
             .then(data => {
-               document.getElementById('totalSales').textContent = '₱' + data.totalSales;
+               document.getElementById('totalSalesD').textContent = '₱' + data.totalSales;
             })
             .catch(error => console.error('Error fetching sales:', error));
+      }
+   });
+</script>
+
+<script>
+   document.addEventListener('DOMContentLoaded', () => {
+      const dateInput = document.getElementById('date');
+
+
+      // Initialize Flatpickr
+      flatpickr(dateInput, {
+         dateFormat: "Y-m-d",
+         defaultDate: new Date(), // Set default date to today
+         onChange: function (selectedDates, dateStr, instance) {
+            if (dateStr) {
+               fetchSales(dateStr);
+            }
+         }
+      });
+
+      // Fetch total sales for today on page load
+      fetchSales(dateInput.value);
+
+
+
+      function fetchSales(date, page = 1) {
+         // Get the staff ID from the URL
+         const url = window.location.href;
+         const urlSegments = url.split('/');
+         const staffId = urlSegments[urlSegments.length - 1];
+
+         // Use the staff ID in your data object
+         const data = { date: date, staff: staffId, page: page };
+
+         $.ajax({
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            url: '{{ route('report') }}',
+            type: 'POST',
+            data: data,
+            success: (response) => {
+               // Update summary statistics
+               document.getElementById('totalSales').textContent = `Total Sales: ₱${response.totalSales}`;
+               document.getElementById('totalOrders').textContent = `Total Orders: ${response.totalOrders}`;
+               document.getElementById('totalQuantity').textContent = `Total Quantity Sold: ${response.totalQuantity}`;
+
+               // Update sales table
+               const salesTableBody = document.getElementById('salesTableBody');
+               salesTableBody.innerHTML = response.sales.data.map(sale => {
+                  const saleDate = new Date(sale.sale_date);
+                  const localDate = saleDate.toLocaleString('en-US', {
+                     timeZone: 'Asia/Manila',
+                     year: 'numeric',
+                     month: '2-digit',
+                     day: '2-digit',
+                     hour: '2-digit',
+                     minute: '2-digit',
+                     second: '2-digit'
+                  });
+
+                  return `
+                    <tr>
+                        <td>${sale.id}</td>
+                        <td>${localDate}</td>
+                        <td>${sale.product.product_name}</td>
+                        <td>${sale.quantity_sold}</td>
+                        <td>₱${parseFloat(sale.inventory ? sale.inventory.price : 0).toFixed(2)}</td>
+                        <td>₱${parseFloat((sale.inventory ? sale.inventory.price : 0) * sale.quantity_sold).toFixed(2)}</td>
+                    </tr>
+                `;
+               }).join('');
+
+               // Update pagination links
+               const paginationContainer = document.getElementById('paginationContainer');
+               paginationContainer.innerHTML = '';
+
+               // Previous Page Link
+               if (response.current_page > 1) {
+                  paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${response.current_page - 1}">&laquo;</a></li>`;
+               } else {
+                  paginationContainer.innerHTML += `<li class="page-item disabled"><span class="page-link">&laquo;</span></li>`;
+               }
+
+               // Page Number Links
+               for (let page = 1; page <= response.last_page; page++) {
+                  if (page === response.current_page) {
+                     paginationContainer.innerHTML += `<li class="page-item active"><span class="page-link">${page}</span></li>`;
+                  } else {
+                     paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${page}">${page}</a></li>`;
+                  }
+               }
+
+               // Next Page Link
+               if (response.current_page < response.last_page) {
+                  paginationContainer.innerHTML += `<li class="page-item"><a class="page-link" href="#" data-page="${response.current_page + 1}">&raquo;</a></li>`;
+               } else {
+                  paginationContainer.innerHTML += `<li class="page-item disabled"><span class="page-link">&raquo;</span></li>`;
+               }
+
+               // Attach click events to pagination links
+               paginationContainer.querySelectorAll('a').forEach(link => {
+                  link.addEventListener('click', function (e) {
+                     e.preventDefault();
+                     const page = this.getAttribute('data-page');
+                     fetchSales(date, page);
+                  });
+               });
+            },
+            error: (xhr) => {
+               console.error('Error:', xhr.responseText);
+               const response = JSON.parse(xhr.responseText);
+               const errorMessage = response.message + "\n" + (response.errors ? response.errors.join("\n") : "");
+               alert(errorMessage);
+            }
+         });
       }
    });
 </script>
